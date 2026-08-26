@@ -194,10 +194,10 @@ def publish(
             # The table was cleared immediately before this insert, so a short
             # write leaves it truncated -- neither empty nor intact. Say so
             # explicitly; a silent shortfall would understate the dashboard
-            # until the next successful run. Against the real client this line
-            # is unreachable: dune.insert_rows raises DuneError naming the
-            # truncation rather than returning a short count. It is kept as a
-            # cheap guard on the dune_module seam.
+            # until the next successful run. This line IS reachable against the
+            # real client: insert_rows sums the `rows_written` Dune reports, so
+            # a 2xx response that acknowledges fewer rows than were sent lands
+            # here rather than raising.
             raise PublishError(
                 f"{table_name}: cleared, then inserted {sent} of {len(rows)} rows. "
                 f"The table is now truncated and must be refilled by a rerun."
