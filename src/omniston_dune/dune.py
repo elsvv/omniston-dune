@@ -30,6 +30,23 @@ MIN_WRITE_INTERVAL_SECONDS = 6.0
 # caller sees a DuneError.
 MAX_RATE_LIMIT_RETRIES = 2
 
+# Gateway statuses: the request never reached Dune's application, or its reply
+# never came back. They say nothing about the request itself, so repeating it
+# is the right response -- unlike a 400, which will fail identically forever.
+TRANSIENT_STATUSES = (502, 503, 504)
+
+# A sibling to MAX_RATE_LIMIT_RETRIES rather than a reuse of it: this counts a
+# different failure (a dropped connection or a bad gateway) with a different
+# wait, and tying the two together would mean one could not be tuned without
+# moving the other. Over a hundred nightly runs against two third-party
+# services, a single transient 502 aborting a whole run is a near-certainty.
+MAX_TRANSIENT_RETRIES = 3
+
+# Exponential backoff for transient failures: 2s, then 4s, then 8s -- 14s of
+# waiting at worst. Retry-After is a rate-limit protocol; gateways and dropped
+# connections do not carry it, so the 429 path's wait does not apply here.
+TRANSIENT_BACKOFF_SECONDS = 2.0
+
 # Used when a 429 carries no Retry-After header: the limit is per minute, so a
 # full minute is the shortest wait guaranteed to clear the window.
 DEFAULT_RETRY_AFTER_SECONDS = 60.0
@@ -93,21 +110,58 @@ def _retry_after_seconds(response: requests.Response) -> float:
 
 
 def _post(url: str, **kwargs) -> requests.Response:
-    """Throttled POST that retries a rate-limited request.
+    """Throttled POST that retries a rate-limited or transiently failed request.
 
-    Every outbound write goes through here so the 15/minute pacing and the 429
-    handling apply uniformly. The response is returned rather than checked:
-    each endpoint decides for itself which statuses are acceptable (create_table
-    treats an existing table as success), and a 429 that survives the retries
-    reaches that same error path.
+    Every outbound write goes through here so the 15/minute pacing, the 429
+    handling and the transient retries apply uniformly. The response is
+    returned rather than checked: each endpoint decides for itself which
+    statuses are acceptable (create_table treats an existing table as success),
+    and a 429 or 502 that survives the retries reaches that same error path.
+
+    A transport failure never returns a response, so it is wrapped into
+    DuneError instead. Letting a raw requests.ConnectionError escape would give
+    the operator a bare traceback -- __main__ catches this project's own error
+    types and nothing else -- and, worse, would hide *which* call failed: a
+    reset during insert_rows arrives after clear_table has already emptied the
+    table, and that truncation is the message the operator needs.
+
+    Retrying an insert that was reset in flight could duplicate a chunk that
+    actually landed. That is acceptable here and only here: every run clears
+    each table before refilling it, so a duplicate survives at most until the
+    next run, whereas not retrying leaves the table truncated for just as long.
     """
-    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+    rate_limit_retries = 0
+    transient_retries = 0
+
+    while True:
         _throttle()
-        response = requests.post(url, **kwargs)
-        if response.status_code != 429 or attempt == MAX_RATE_LIMIT_RETRIES:
-            return response
-        time.sleep(_retry_after_seconds(response))
-    raise AssertionError("unreachable")  # pragma: no cover
+        try:
+            response = requests.post(url, **kwargs)
+        except requests.RequestException as exc:
+            if transient_retries >= MAX_TRANSIENT_RETRIES:
+                raise DuneError(
+                    f"POST {url} transport failure after "
+                    f"{transient_retries + 1} attempts: {exc}"
+                ) from exc
+            time.sleep(TRANSIENT_BACKOFF_SECONDS * 2**transient_retries)
+            transient_retries += 1
+            continue
+
+        if response.status_code == 429:
+            if rate_limit_retries >= MAX_RATE_LIMIT_RETRIES:
+                return response
+            time.sleep(_retry_after_seconds(response))
+            rate_limit_retries += 1
+            continue
+
+        if response.status_code in TRANSIENT_STATUSES:
+            if transient_retries >= MAX_TRANSIENT_RETRIES:
+                return response
+            time.sleep(TRANSIENT_BACKOFF_SECONDS * 2**transient_retries)
+            transient_retries += 1
+            continue
+
+        return response
 
 
 def create_table(

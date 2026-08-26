@@ -228,3 +228,72 @@ def test_retry_after_under_the_cap_is_returned_unchanged():
     response = requests.Response()
     response.headers["Retry-After"] = "3"
     assert dune._retry_after_seconds(response) == 3.0
+
+
+@responses.activate
+def test_a_transport_failure_surfaces_as_a_dune_error(monkeypatch):
+    # A connection reset used to escape as a raw requests.ConnectionError.
+    # __main__ catches this project's own error types and nothing else, so the
+    # operator got a bare traceback instead of the message saying the table had
+    # already been cleared and is now empty.
+    slept = []
+    monkeypatch.setattr(dune.time, "sleep", slept.append)
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear",
+        body=requests.ConnectionError("connection reset by peer"),
+    )
+
+    with pytest.raises(dune.DuneError, match="transport failure") as excinfo:
+        dune.clear_table("key", "me", "t")
+    assert "connection reset by peer" in str(excinfo.value)
+    # Retried with exponential backoff, then bounded.
+    assert len(responses.calls) == dune.MAX_TRANSIENT_RETRIES + 1
+    assert slept == [2.0, 4.0, 8.0]
+
+
+@responses.activate
+def test_a_transient_gateway_error_is_retried(monkeypatch):
+    # One 502 from either service used to abort the whole run. Across a hundred
+    # nightly runs that is a near-certainty, and mid-publish it leaves some
+    # tables refreshed and others stale.
+    slept = []
+    monkeypatch.setattr(dune.time, "sleep", slept.append)
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear", status=502, json={"error": "bad gateway"}
+    )
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", json={})
+
+    dune.clear_table("key", "me", "t")
+    assert len(responses.calls) == 2
+    # Exponential backoff, not the 429 path's Retry-After: gateways do not
+    # send that header.
+    assert slept == [dune.TRANSIENT_BACKOFF_SECONDS]
+
+
+@responses.activate
+def test_persistent_gateway_errors_raise_after_the_retries_are_spent(monkeypatch):
+    slept = []
+    monkeypatch.setattr(dune.time, "sleep", slept.append)
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear", status=503, json={"error": "unavailable"}
+    )
+
+    with pytest.raises(dune.DuneError, match="503"):
+        dune.clear_table("key", "me", "t")
+    # The original attempt plus MAX_TRANSIENT_RETRIES, and no more.
+    assert len(responses.calls) == dune.MAX_TRANSIENT_RETRIES + 1
+    assert slept == [2.0, 4.0, 8.0]
+
+
+@responses.activate
+def test_a_client_error_is_never_retried(monkeypatch):
+    # Guard on the boundary: a 500 or a 400 will fail identically forever, so
+    # retrying only delays the failure. Only the gateway statuses are transient.
+    monkeypatch.setattr(dune.time, "sleep", lambda seconds: None)
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear", status=500, json={"error": "boom"}
+    )
+
+    with pytest.raises(dune.DuneError, match="500"):
+        dune.clear_table("key", "me", "t")
+    assert len(responses.calls) == 1
