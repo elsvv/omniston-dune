@@ -15,6 +15,8 @@ snapshot that was uploaded — it does not fetch anything new.
     cp .env.example .env    # fill in DUNE_API_KEY and DUNE_NAMESPACE
 
 The API key needs `Read/Write` scope (dune.com → Settings → API).
+`.env` is read automatically on a local run; in CI the same variables come
+from repository secrets instead, so no `.env` file is needed there.
 
 ## Running
 
