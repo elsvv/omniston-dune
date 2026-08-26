@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Iterable, Sequence
+from datetime import datetime, timezone
 
 import requests
 
@@ -10,6 +11,18 @@ from . import cubes, dune, orders, schemas
 from .config import Settings
 
 log = logging.getLogger(__name__)
+
+# The API stamps its own `time_period` values in this format, and `day` carries
+# them through unchanged.
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+# `omniston_daily_total` carries one row per UTC day, so consecutive `day`
+# values are normally one day apart. Two tolerates a single genuinely empty
+# day. Anything wider means a fetch window came back with nothing -- and under
+# a full refresh that is not a harmless hole in the data: publish clears every
+# table before refilling it from exactly these rows, so the missing period is
+# about to be deleted from the published tables.
+MAX_DAY_GAP = 2
 
 
 class PublishError(RuntimeError):
@@ -50,6 +63,63 @@ def build_datasets(
     return datasets
 
 
+def _parse_day(table_name: str, value: object) -> datetime:
+    """Parse a `day` value, or say which table and value could not be read."""
+    try:
+        return datetime.strptime(str(value), TIMESTAMP_FORMAT)
+    except (TypeError, ValueError) as exc:
+        raise PublishError(
+            f"{table_name} has an unparseable day value {value!r}; expected "
+            f"the API's own {TIMESTAMP_FORMAT} form. Day coverage cannot be "
+            f"checked, so this run is refused rather than published blind."
+        ) from exc
+
+
+def _check_upstream_returned_data(datasets: dict[str, list[dict]]) -> None:
+    """Refuse to publish a dataset that upstream never really filled.
+
+    This is the spec's "alert on an unexpected drop", and the failure it
+    prevents is a green run that blanks the dashboard. An empty Omniston
+    response is `{"result": {}}`, which is indistinguishable from "no data
+    exists". If the service answers 200 with an empty result for every window,
+    every table here is an empty list, the null pre-pass above passes
+    vacuously, publish clears all seven tables, insert_rows returns 0 without
+    an HTTP call, publish's `sent == len(rows)` check passes as `0 == 0`, and
+    the run exits 0 having wiped seven public tables.
+
+    The same mechanism at partial strength is quieter and worse: one 30-day
+    window returning empty deletes a month of history with no signal at all,
+    which is why day coverage is checked and not just emptiness.
+
+    Tables the schema does not know are left alone: publish looks their schema
+    up unconditionally, so they can never reach Dune in the first place.
+    """
+    for table_name, rows in datasets.items():
+        if table_name in schemas.TABLES and not rows:
+            raise PublishError(
+                f"{table_name} came back empty (0 rows). Every table is fully "
+                f"refreshed, so publishing this would clear the table and "
+                f"leave it empty; refusing to publish."
+            )
+
+    total = datasets.get("omniston_daily_total")
+    if not total:
+        return
+
+    days = sorted(_parse_day("omniston_daily_total", row.get("day")) for row in total)
+    for earlier, later in zip(days, days[1:]):
+        gap = (later - earlier).days
+        if gap > MAX_DAY_GAP:
+            raise PublishError(
+                f"omniston_daily_total jumps {gap} days from "
+                f"{earlier.strftime(TIMESTAMP_FORMAT)} to "
+                f"{later.strftime(TIMESTAMP_FORMAT)}, more than MAX_DAY_GAP="
+                f"{MAX_DAY_GAP}; a fetch window returned nothing and that "
+                f"period would be deleted from the published tables. "
+                f"{len(days)} day rows in total; refusing to publish."
+            )
+
+
 def validate_datasets(datasets: dict[str, list[dict]]) -> None:
     """Reject nulls in non-nullable columns, across every table, writing nothing.
 
@@ -59,9 +129,16 @@ def validate_datasets(datasets: dict[str, list[dict]]) -> None:
     be found only once the earlier tables had already been created, cleared
     and refilled, leaving Dune holding a mix of today's data and the previous
     run's. This runs as a pre-pass, before the first Dune call of any kind.
+
+    The upstream sanity gate lives here too, rather than in publish, so that it
+    is enforced before any Dune call and so `--dry-run` exercises it as well.
     """
     for table_name, rows in datasets.items():
-        schema = schemas.TABLES[table_name]
+        schema = schemas.TABLES.get(table_name)
+        if schema is None:
+            # publish looks the schema up unconditionally, so an unknown table
+            # name raises there and can never reach Dune. Nothing to check.
+            continue
         required = [c["name"] for c in schema if not c.get("nullable", True)]
         for index, row in enumerate(rows):
             missing = [name for name in required if row.get(name) is None]
@@ -70,6 +147,8 @@ def validate_datasets(datasets: dict[str, list[dict]]) -> None:
                     f"{table_name} row {index} has null in non-nullable "
                     f"column(s) {missing}; refusing to clear the table"
                 )
+
+    _check_upstream_returned_data(datasets)
 
 
 def publish(

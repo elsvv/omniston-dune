@@ -6,6 +6,10 @@ SETTINGS = config.Settings(
     dune_api_key="key", dune_namespace="me", user_agent="ua/1", history_start_ts=1000
 )
 
+# Two consecutive UTC days, in the API's own `time_period` format.
+DAY_1 = "2026-08-24T00:00:00Z"
+DAY_2 = "2026-08-25T00:00:00Z"
+
 
 class FakeDune:
     def __init__(self, fail_on_insert=False):
@@ -81,7 +85,7 @@ def test_run_fetches_everything_before_touching_dune(monkeypatch):
 
 def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
     fake = FakeDune()
-    pipeline.publish(SETTINGS, {"omniston_daily_total": [{"day": "x"}]}, dune_module=fake)
+    pipeline.publish(SETTINGS, {"omniston_daily_total": [{"day": DAY_1}]}, dune_module=fake)
     assert fake.calls == [
         ("create", "omniston_daily_total"),
         ("clear", "omniston_daily_total"),
@@ -103,8 +107,8 @@ def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
         pipeline.publish(
             SETTINGS,
             {
-                "omniston_daily_total": [{"day": "x"}],
-                "omniston_daily_resolver": [{"day": "x"}, {"day": None}],
+                "omniston_daily_total": [{"day": DAY_1}],
+                "omniston_daily_resolver": [{"day": DAY_1}, {"day": None}],
             },
             dune_module=fake,
         )
@@ -118,7 +122,7 @@ def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
 def test_validate_datasets_accepts_a_clean_mapping():
     pipeline.validate_datasets(
         {
-            "omniston_daily_total": [{"day": "x"}],
+            "omniston_daily_total": [{"day": DAY_1}],
             "omniston_orders": [{"lt": "1", "status": None}],
         }
     )
@@ -143,14 +147,132 @@ def test_publish_raises_when_fewer_rows_land_than_were_sent():
     with pytest.raises(pipeline.PublishError, match="truncated"):
         pipeline.publish(
             SETTINGS,
-            {"omniston_daily_total": [{"day": "x"}, {"day": "y"}]},
+            {"omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}]},
             dune_module=fake,
         )
 
 
 def test_run_executes_the_dashboard_queries_last(monkeypatch):
-    monkeypatch.setattr(pipeline.cubes, "fetch_cube", lambda *a, **k: [])
-    monkeypatch.setattr(pipeline.orders, "iter_orders", lambda *a, **k: iter([]))
+    # Every table gets a row: seven empty tables is precisely what the sanity
+    # gate refuses, so a run that publishes anything must have data.
+    monkeypatch.setattr(
+        pipeline.cubes,
+        "fetch_cube",
+        lambda *a, **k: [{"time_period": DAY_1, "finalized_orders_count": "1"}],
+    )
+    monkeypatch.setattr(
+        pipeline.orders,
+        "iter_orders",
+        lambda *a, **k: iter([{"lt": "1787654164994885497"}]),
+    )
     fake = FakeDune()
     pipeline.run(SETTINGS, now_ts=2000, query_ids=(11, 22), dune_module=fake)
     assert fake.calls[-2:] == [("execute", 11), ("execute", 22)]
+
+
+# --- upstream sanity gate -------------------------------------------------
+#
+# An empty Omniston result is `{"result": {}}`, indistinguishable from "no data
+# exists". Without this gate a service returning 200s with empty results makes
+# `build_datasets` yield seven empty lists, `publish` clear all seven tables,
+# `insert_rows` return 0 without an HTTP call, and the run exit 0 -- seven
+# public tables wiped and the job green. Each fixture below is written out in
+# full rather than derived from a shared builder, so a bug in a helper cannot
+# make these pass for the wrong reason.
+
+
+def test_validate_datasets_accepts_a_healthy_full_dataset():
+    pipeline.validate_datasets(
+        {
+            "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
+            "omniston_daily_chainpair": [{"day": DAY_1}],
+            "omniston_daily_resolver": [{"day": DAY_1}],
+            "omniston_daily_input_asset": [{"day": DAY_1}],
+            "omniston_daily_output_asset": [{"day": DAY_1}],
+            "omniston_daily_integrator": [{"day": DAY_1}],
+            "omniston_orders": [{"lt": "1787654164994885497"}],
+        }
+    )
+
+
+def test_validate_datasets_rejects_an_empty_orders_table():
+    with pytest.raises(pipeline.PublishError) as excinfo:
+        pipeline.validate_datasets(
+            {
+                "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
+                "omniston_daily_chainpair": [{"day": DAY_1}],
+                "omniston_daily_resolver": [{"day": DAY_1}],
+                "omniston_daily_input_asset": [{"day": DAY_1}],
+                "omniston_daily_output_asset": [{"day": DAY_1}],
+                "omniston_daily_integrator": [{"day": DAY_1}],
+                "omniston_orders": [],
+            }
+        )
+    message = str(excinfo.value)
+    assert "omniston_orders" in message
+    assert "0 rows" in message
+
+
+def test_validate_datasets_rejects_an_empty_cube():
+    # One cube coming back empty while the others are full is the partial case:
+    # publish would clear that table and leave it empty.
+    with pytest.raises(pipeline.PublishError) as excinfo:
+        pipeline.validate_datasets(
+            {
+                "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
+                "omniston_daily_chainpair": [{"day": DAY_1}],
+                "omniston_daily_resolver": [],
+                "omniston_daily_input_asset": [{"day": DAY_1}],
+                "omniston_daily_output_asset": [{"day": DAY_1}],
+                "omniston_daily_integrator": [{"day": DAY_1}],
+                "omniston_orders": [{"lt": "1787654164994885497"}],
+            }
+        )
+    message = str(excinfo.value)
+    assert "omniston_daily_resolver" in message
+    assert "0 rows" in message
+
+
+def test_validate_datasets_rejects_a_gap_in_day_coverage():
+    # Aug 24 then Aug 28: the three days in between are missing, so a fetch
+    # window returned nothing. Under a full refresh that period is not merely
+    # absent from today's load -- it is about to be deleted from the published
+    # tables. Every table is non-empty here, so only the day check can catch it.
+    with pytest.raises(pipeline.PublishError) as excinfo:
+        pipeline.validate_datasets(
+            {
+                "omniston_daily_total": [
+                    {"day": "2026-08-24T00:00:00Z"},
+                    {"day": "2026-08-28T00:00:00Z"},
+                ],
+                "omniston_daily_chainpair": [{"day": DAY_1}],
+                "omniston_daily_resolver": [{"day": DAY_1}],
+                "omniston_daily_input_asset": [{"day": DAY_1}],
+                "omniston_daily_output_asset": [{"day": DAY_1}],
+                "omniston_daily_integrator": [{"day": DAY_1}],
+                "omniston_orders": [{"lt": "1787654164994885497"}],
+            }
+        )
+    message = str(excinfo.value)
+    assert "4 days" in message
+    assert "2026-08-24T00:00:00Z" in message and "2026-08-28T00:00:00Z" in message
+    assert f"MAX_DAY_GAP={pipeline.MAX_DAY_GAP}" in message
+
+
+def test_validate_datasets_tolerates_a_single_missing_day():
+    # A day with genuinely zero orders is plausible; MAX_DAY_GAP exists so that
+    # one such day does not fail an otherwise healthy run.
+    pipeline.validate_datasets(
+        {
+            "omniston_daily_total": [
+                {"day": "2026-08-24T00:00:00Z"},
+                {"day": "2026-08-26T00:00:00Z"},
+            ],
+            "omniston_daily_chainpair": [{"day": DAY_1}],
+            "omniston_daily_resolver": [{"day": DAY_1}],
+            "omniston_daily_input_asset": [{"day": DAY_1}],
+            "omniston_daily_output_asset": [{"day": DAY_1}],
+            "omniston_daily_integrator": [{"day": DAY_1}],
+            "omniston_orders": [{"lt": "1787654164994885497"}],
+        }
+    )
