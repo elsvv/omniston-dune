@@ -17,3 +17,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["live: hits the real Omniston API; needs network access"]
+addopts = "-m 'not live'"
