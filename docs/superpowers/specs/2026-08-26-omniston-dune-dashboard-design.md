@@ -363,3 +363,37 @@ ranked table.
 - A synthetic empty window must be handled without raising, exercising the missing
   `rows` key.
 - The hanging filters must not appear anywhere in the codebase.
+
+## 8. Amendment, 2026-08-26 — cross-chain scope
+
+Section 3.2 gave four cubes no chain-pair dimension: `omniston_daily_resolver`,
+`omniston_daily_input_asset`, `omniston_daily_output_asset` and
+`omniston_daily_integrator`. That made a whole class of question unanswerable
+rather than merely imprecise.
+
+Measured over all history to date:
+
+| | volume | swaps |
+| --- | --- | --- |
+| cross-chain | $1,671,443 | 13,893 |
+| same-chain | $41,390,347 | 27,581 |
+| same-chain share | 96.1% | 66.5% |
+
+Omniston settles same-chain swaps as well as cross-chain ones, and by volume
+they are the larger business. A fee, resolver or asset figure taken from a cube
+without the pair therefore describes a business this dashboard is not about —
+and does so without any visible sign that it has.
+
+The four cubes now carry `src_chain_id` and `dst_chain_id`, and every query
+filters `src_chain_id != dst_chain_id`. Measured cost: roughly three times the
+rows on the resolver and integrator cubes, half again on the asset cubes —
+9,574 cube rows in total, against 41,481 order rows. Storage is unaffected in
+any way that matters.
+
+Dune upload schemas are immutable, so the four tables were deleted and
+recreated. `create_table` fails loudly on a schema mismatch, so a stale table
+cannot silently survive a future change to these definitions.
+
+One consequence is worth recording because it changes a headline claim: measured
+against cross-chain swaps rather than all swaps, Polymarket flows are 76.7% of
+Omniston's cross-chain activity, not the quarter previously reported.

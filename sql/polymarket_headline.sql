@@ -10,9 +10,16 @@ with flows as (
     case when output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
          then dst_trader_address else src_trader_address end as wallet
   from dune.elsvv.omniston_orders
-  where status = 'TRADE_STATUS_FULLY_FILLED'
+  where status = 'TRADE_STATUS_FULLY_FILLED' and src_chain_id != dst_chain_id
     and (output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
       or input_asset_address  = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB')
+)
+xc as (
+  -- The denominator is cross-chain swaps, not all Omniston swaps: this
+  -- dashboard is about the cross-chain business.
+  select sum(finalized_orders_count) as swaps
+  from dune.elsvv.omniston_daily_chainpair
+  where src_chain_id != dst_chain_id
 )
 select
   sum(case when direction =  1 then usd end)                    as deposits_usd,
@@ -20,5 +27,6 @@ select
   sum(direction * usd)                                          as net_usd,
   count(distinct wallet)                                        as wallets,
   count(*)                                                      as transfers,
-  approx_percentile(case when direction = 1 then usd end, 0.5)  as median_deposit_usd
+  approx_percentile(case when direction = 1 then usd end, 0.5)  as median_deposit_usd,
+  100.0 * count(*) / nullif((select swaps from xc), 0)          as share_of_swaps_pct
 from flows

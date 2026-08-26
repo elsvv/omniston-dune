@@ -19,7 +19,7 @@ with flows as (
     case when output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
          then dst_trader_address else src_trader_address end as wallet
   from dune.elsvv.omniston_orders
-  where status = 'TRADE_STATUS_FULLY_FILLED'
+  where status = 'TRADE_STATUS_FULLY_FILLED' and src_chain_id != dst_chain_id
     and (output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
       or input_asset_address  = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB')
 ),

@@ -139,3 +139,19 @@ def test_every_table_carries_a_non_nullable_run_ts():
         assert "run_ts" in by_name, table
         assert by_name["run_ts"]["type"] == "timestamp", table
         assert by_name["run_ts"]["nullable"] is False, table
+
+
+def test_every_grouped_cube_carries_the_chain_pair():
+    """Without src and dst chain, a cube cannot tell cross-chain from same-chain.
+
+    Same-chain swaps are the larger share of Omniston volume, so a cube missing
+    the pair does not merely lose detail -- every figure drawn from it silently
+    describes a different business than the one being asked about.
+    """
+    for cube, dimensions in cubes.CUBE_SPECS.items():
+        if not dimensions:
+            continue  # omniston_daily_total is deliberately ungrouped
+        assert "src_chain_id" in dimensions, cube
+        assert "dst_chain_id" in dimensions, cube
+        names = {column["name"] for column in schemas.CUBE_COLUMNS[cube]}
+        assert {"src_chain_id", "dst_chain_id"} <= names, cube

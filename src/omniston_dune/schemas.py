@@ -34,18 +34,26 @@ _OUTPUT_ASSET_METRICS = [
     _col(metric, "double") for metric in cubes.ALL_METRICS if metric not in _INPUT_SIDE_VOLUME_METRICS
 ]
 
+# Carried by every cube that groups by anything at all. Same-chain swaps are
+# the bulk of Omniston's volume, so without the pair a cube cannot separate
+# them from cross-chain ones and quietly reports the wrong business.
+_PAIR_COLUMNS = [_col("src_chain_id", "string"), _col("dst_chain_id", "string")]
+
 CUBE_COLUMNS: dict[str, list[dict]] = {
     "omniston_daily_total": _DAY + _RUN_TS + _METRIC_COLUMNS,
     "omniston_daily_chainpair": _DAY
     + _RUN_TS
-    + [_col("src_chain_id", "string"), _col("dst_chain_id", "string"), _col("status", "string")]
+    + _PAIR_COLUMNS
+    + [_col("status", "string")]
     + _METRIC_COLUMNS,
     "omniston_daily_resolver": _DAY
     + _RUN_TS
+    + _PAIR_COLUMNS
     + [_col("resolver_id", "string"), _col("status", "string")]
     + _METRIC_COLUMNS,
     "omniston_daily_input_asset": _DAY
     + _RUN_TS
+    + _PAIR_COLUMNS
     + [
         _col("input_asset_chain", "string"),
         _col("input_asset_kind", "string"),
@@ -54,6 +62,7 @@ CUBE_COLUMNS: dict[str, list[dict]] = {
     + _METRIC_COLUMNS,
     "omniston_daily_output_asset": _DAY
     + _RUN_TS
+    + _PAIR_COLUMNS
     + [
         _col("output_asset_chain", "string"),
         _col("output_asset_kind", "string"),
@@ -62,6 +71,7 @@ CUBE_COLUMNS: dict[str, list[dict]] = {
     + _OUTPUT_ASSET_METRICS,
     "omniston_daily_integrator": _DAY
     + _RUN_TS
+    + _PAIR_COLUMNS
     + [_col("integrator_chain", "string"), _col("integrator_address", "string")]
     + _METRIC_COLUMNS,
 }

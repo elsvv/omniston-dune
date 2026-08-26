@@ -25,13 +25,22 @@ ALL_METRICS = [
 # `unique_trader_wallets_count` is NOT additive across buckets. It is only
 # meaningful in the cube whose grouping matches how it will be displayed, which
 # is why `omniston_daily_total` exists as its own table.
+#
+# Every cube except that one carries the chain pair. Omniston settles same-chain
+# swaps as well as cross-chain ones, and same-chain is the larger business by
+# volume -- so a cube without the pair cannot answer a cross-chain question at
+# all, and silently answers a different one instead. Measured cost of carrying
+# it: roughly three times the rows on the resolver and integrator cubes, half
+# again on the asset cubes, which is a few thousand rows across all history.
+_PAIR = ["src_chain_id", "dst_chain_id"]
+
 CUBE_SPECS: dict[str, list[str]] = {
     "omniston_daily_total": [],
-    "omniston_daily_chainpair": ["src_chain_id", "dst_chain_id", "status"],
-    "omniston_daily_resolver": ["resolver_id", "status"],
-    "omniston_daily_input_asset": ["input_asset"],
-    "omniston_daily_output_asset": ["output_asset"],
-    "omniston_daily_integrator": ["integrator_address"],
+    "omniston_daily_chainpair": [*_PAIR, "status"],
+    "omniston_daily_resolver": [*_PAIR, "resolver_id", "status"],
+    "omniston_daily_input_asset": [*_PAIR, "input_asset"],
+    "omniston_daily_output_asset": [*_PAIR, "output_asset"],
+    "omniston_daily_integrator": [*_PAIR, "integrator_address"],
 }
 
 _NESTED_ASSET_DIMENSIONS = ("input_asset", "output_asset")
