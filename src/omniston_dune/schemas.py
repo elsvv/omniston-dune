@@ -13,10 +13,17 @@ _DAY = [_col("day", "timestamp", nullable=False)]
 
 _METRIC_COLUMNS = [_col(metric, "double") for metric in cubes.ALL_METRICS]
 
-# `omniston_daily_output_asset` deliberately omits every USD metric: both volume
-# figures are computed on the input side, so a volume attributed to the bought
-# asset would be a different quantity wearing the same label.
-_COUNT_ONLY = [_col("finalized_orders_count", "double")]
+# `omniston_daily_output_asset` excludes only the two input-side volume
+# metrics: both volume figures are computed on the input side of a trade, so a
+# volume attributed to the bought asset would be a different quantity wearing
+# the same label. Everything else belongs here, including the two fee
+# metrics -- the protocol collects both `protocol_fees_usd` and
+# `integrator_fees_usd` in the output asset, so grouping them by output asset
+# answers "which assets earn the fees".
+_INPUT_SIDE_VOLUME_METRICS = {"finalized_orders_volume_usd", "filled_orders_volume_usd"}
+_OUTPUT_ASSET_METRICS = [
+    _col(metric, "double") for metric in cubes.ALL_METRICS if metric not in _INPUT_SIDE_VOLUME_METRICS
+]
 
 CUBE_COLUMNS: dict[str, list[dict]] = {
     "omniston_daily_total": _DAY + _METRIC_COLUMNS,
@@ -39,7 +46,7 @@ CUBE_COLUMNS: dict[str, list[dict]] = {
         _col("output_asset_kind", "string"),
         _col("output_asset_address", "string"),
     ]
-    + _COUNT_ONLY,
+    + _OUTPUT_ASSET_METRICS,
     "omniston_daily_integrator": _DAY
     + [_col("integrator_chain", "string"), _col("integrator_address", "string")]
     + _METRIC_COLUMNS,
