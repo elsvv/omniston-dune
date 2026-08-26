@@ -1572,6 +1572,17 @@ def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
     ]
 
 
+def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
+    # `day` and `lt` are declared non-nullable. Dune would reject the insert
+    # after the clear had already run, leaving the table empty.
+    fake = FakeDune()
+    with pytest.raises(pipeline.PublishError, match="non-nullable"):
+        pipeline.publish(
+            SETTINGS, {"omniston_daily_total": [{"day": None}]}, dune_module=fake
+        )
+    assert fake.calls == []
+
+
 def test_publish_raises_when_fewer_rows_land_than_were_sent():
     # The spec requires verifying row counts after each run: clear-then-insert
     # has no rollback, so a short write leaves a truncated table.
@@ -1668,6 +1679,17 @@ def publish(
     written: dict[str, int] = {}
     for table_name, rows in datasets.items():
         schema = schemas.TABLES[table_name]
+        # Dune rejects the whole insert if a non-nullable column receives null,
+        # and it rejects it AFTER the table has been cleared. Catch it here,
+        # before anything is destroyed.
+        required = [c["name"] for c in schema if not c.get("nullable", True)]
+        for index, row in enumerate(rows):
+            missing = [name for name in required if row.get(name) is None]
+            if missing:
+                raise PublishError(
+                    f"{table_name} row {index} has null in non-nullable "
+                    f"column(s) {missing}; refusing to clear the table"
+                )
         dune_module.create_table(
             settings.dune_api_key,
             settings.dune_namespace,
