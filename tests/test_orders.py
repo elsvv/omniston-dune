@@ -1,3 +1,4 @@
+import pytest
 import responses
 
 from omniston_dune import omniston, orders
@@ -68,6 +69,27 @@ def test_iter_orders_omits_prev_lt_on_the_first_page_then_sends_it():
 def test_iter_orders_stops_on_an_empty_result_with_no_orders_key():
     responses.post(omniston.JSONRPC_URL, json={"jsonrpc": "2.0", "id": 1, "result": {}})
     assert list(orders.iter_orders(0, 100)) == []
+
+
+@responses.activate
+def test_iter_orders_raises_if_the_cursor_does_not_advance():
+    # Live data shows `lt` strictly ascending with no duplicates across 1000
+    # consecutive orders, so this has not been observed against the real
+    # service. The guard exists so that a service regression (has_next_page
+    # true paired with a stalled or regressed cursor) fails loudly instead of
+    # looping forever and hanging a nightly ingest run.
+    responses.post(
+        omniston.JSONRPC_URL,
+        json={"jsonrpc": "2.0", "id": 1,
+              "result": {"orders": [dict(SAMPLE, lt="10")], "has_next_page": True}},
+    )
+    responses.post(
+        omniston.JSONRPC_URL,
+        json={"jsonrpc": "2.0", "id": 1,
+              "result": {"orders": [dict(SAMPLE, lt="10")], "has_next_page": True}},
+    )
+    with pytest.raises(omniston.OmnistonError):
+        list(orders.iter_orders(0, 100))
 
 
 def test_flatten_order_computes_the_latency_funnel():

@@ -58,7 +58,14 @@ def iter_orders(
 
         if not result.get("has_next_page"):
             return
-        prev_lt = page[-1]["lt"]
+
+        next_lt = page[-1]["lt"]
+        if prev_lt is not None and int(next_lt) <= int(prev_lt):
+            raise omniston.OmnistonError(
+                f"{omniston.LIST_METHOD} did not advance the cursor: "
+                f"sent prev_lt={prev_lt!r}, received lt={next_lt!r}"
+            )
+        prev_lt = next_lt
 
 
 def _seconds(order: dict, key: str) -> float | None:
@@ -95,6 +102,10 @@ def flatten_order(order: dict) -> dict:
         "output_asset_kind": out_kind,
         "output_asset_address": out_address,
         "resolver_id": order.get("resolver_id"),
+        # Both fields are present on every order in practice (1000/1000 checked
+        # against the live service), and an explicit 0 is common and meaningful
+        # for the integrator fee, so `or 0` here is a formality, not a semantic
+        # choice about absence vs. zero.
         "integrator_fee_pips": float(order.get("integrator_fee_pips") or 0),
         "protocol_fee_pips": float(order.get("protocol_fee_pips") or 0),
         "quote_request_time": requested,
