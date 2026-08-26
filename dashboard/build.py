@@ -388,8 +388,13 @@ def spec() -> list[tuple]:
             # a quantity anyone can name.
             ("multiple", "Wagered per $1 deposited", "counter", counter("multiple", "Wagered per $1 deposited", "", 1, "x")),
             ("traders",  "New traders created",   "counter", counter("new_traders", "New traders created")),
-            ("lag",      "Deposit to first bet",  "counter", counter("median_lag_seconds", "Deposit to first bet", "", 0, " s")),
-            ("fast",     "Betting within a minute", "counter", counter("within_a_minute_pct", "Betting within a minute", "", 0, "%")),
+            ("lag",      "Funded to first bet, median", "counter",
+             counter("median_lag_seconds", "Funded to first bet, median", "", 0, " s")),
+            # "Within a minute" of what was not answerable from the tile. The
+            # clock starts when the money lands, so this is the wait after the
+            # swap finished, not the swap itself.
+            ("fast",     "First bet within a minute of funding", "counter",
+             counter("within_a_minute_pct", "First bet within a minute of funding", "", 0, "%")),
         ]),
         ("polymarket_headline", "Omniston · Polymarket headline", "", [
             ("deposits",    "Into Polymarket",   "counter", counter("deposits_usd", "Into Polymarket", "$")),

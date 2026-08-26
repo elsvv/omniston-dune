@@ -60,8 +60,13 @@ select
   -- came out as the bare "1 min" that hid the real figure.
   --
   -- Both lag figures count only wallets whose first bet came after their first
-  -- deposit. A wallet that already traded before it was funded has a negative
-  -- lag, which is a true fact about a different question.
+  -- deposit -- the same 2,440 wallets as new_traders. A wallet that already
+  -- traded before it was funded has a negative lag, which is a true fact about
+  -- a different question, and one that never traded has no lag at all.
+  --
+  -- The clock starts at order_finalize_time, when the money reached the wallet.
+  -- These figures therefore measure what someone does once funded, not how long
+  -- Omniston took to fund them: the swap is already over when the clock starts.
   round(approx_percentile(
     case when t.first_trade > f.first_deposit
          then date_diff('second', f.first_deposit, t.first_trade) end, 0.5)) as median_lag_seconds,
