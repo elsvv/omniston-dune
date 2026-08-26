@@ -52,6 +52,18 @@ select
   round(sum(f.deposited_usd))                             as deposited_usd,
   round(sum(t.wagered_usd))                               as wagered_usd,
   round(sum(t.wagered_usd) / nullif(sum(f.deposited_usd), 0), 1) as multiple,
-  round(approx_percentile(date_diff('minute', f.first_deposit, t.first_trade), 0.5)) as median_lag_minutes
+  -- Seconds, not minutes. date_diff truncates before the percentile is taken,
+  -- so measuring in minutes scored a 47-second wallet as zero and the median
+  -- came out as the bare "1 min" that hid the real figure.
+  --
+  -- Both lag figures count only wallets whose first bet came after their first
+  -- deposit. A wallet that already traded before it was funded has a negative
+  -- lag, which is a true fact about a different question.
+  round(approx_percentile(
+    case when t.first_trade > f.first_deposit
+         then date_diff('second', f.first_deposit, t.first_trade) end, 0.5)) as median_lag_seconds,
+  100.0 * count_if(t.first_trade > f.first_deposit
+                   and date_diff('second', f.first_deposit, t.first_trade) <= 60)
+        / nullif(count_if(t.first_trade > f.first_deposit), 0) as within_a_minute_pct
 from funded f
 left join traded t on t.addr = f.addr

@@ -21,6 +21,9 @@ select
   t.protocol_fees_usd,
   t.integrator_fees_usd + t.protocol_fees_usd as total_fees_usd,
   10000.0 * (t.integrator_fees_usd + t.protocol_fees_usd) / nullif(t.volume_usd, 0) as take_rate_bps,
+  -- The same rate in the unit a person can picture. Basis points are correct
+  -- and mean nothing to anyone outside the desk.
+  1000.0 * (t.integrator_fees_usd + t.protocol_fees_usd) / nullif(t.volume_usd, 0) as cost_per_1000_usd,
   100.0 * t.integrator_fees_usd
         / nullif(t.integrator_fees_usd + t.protocol_fees_usd, 0) as integrator_share_pct,
   i.integrators

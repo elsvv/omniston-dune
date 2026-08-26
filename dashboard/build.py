@@ -237,7 +237,9 @@ cross-chain swaps and well under half the volume. Polymarket gives every user th
 deposit wallet and settles in its own stablecoin, so these are counted exactly rather than \
 guessed, with no address heuristics involved.
 
-Wagered volume is gross, not profit: $100 recycled through forty bets counts as $4,000."""
+The first two rows follow only wallets the Polymarket deposit-wallet factory created, which \
+is why their deposit figure is smaller than the total pUSD flow in the rows beneath. Wagered \
+volume is gross, not profit: $100 recycled through forty bets counts as $4,000."""
 
 METHODOLOGY = """### Notes
 
@@ -297,8 +299,10 @@ def spec() -> list[tuple]:
                    x_title="Weeks after first swap")),
         ]),
         ("fee_headline", "Omniston · Fee headline", "", [
-            ("rate",  "Fee on a swap", "counter",
-             counter("take_rate_bps", "Fee on a swap", "", 1, " bps")),
+            # Basis points are the correct unit and mean nothing outside a
+            # trading desk. The league table below still carries bps.
+            ("rate",  "Cost of a $1,000 swap", "counter",
+             counter("cost_per_1000_usd", "Cost of a $1,000 swap", "$", 2)),
             ("total", "Paid in fees",  "counter",
              counter("total_fees_usd", "Paid in fees", "$", 0)),
             ("apps",  "Apps sending flow", "counter",
@@ -377,11 +381,15 @@ def spec() -> list[tuple]:
              chart("bar", "trade_size", [("orders", "Orders", "column")], "Orders", sort_x=False)),
         ]),
         ("polymarket_impact", "Omniston · Polymarket impact",
-         "What the funded wallets went on to do.", [
+         "Wallets the Polymarket factory created, and what they went on to do.", [
+            ("deposited", "Deposited",            "counter", counter("deposited_usd", "Deposited", "$")),
             ("wagered",  "Wagered on Polymarket", "counter", counter("wagered_usd", "Wagered on Polymarket", "$")),
+            # No dollar prefix: a multiple is not an amount, and "$14.8x" is not
+            # a quantity anyone can name.
+            ("multiple", "Wagered per $1 deposited", "counter", counter("multiple", "Wagered per $1 deposited", "", 1, "x")),
             ("traders",  "New traders created",   "counter", counter("new_traders", "New traders created")),
-            ("multiple", "Wagered per $1 deposited", "counter", counter("multiple", "Wagered per $1 deposited", "$", 1, "x")),
-            ("lag",      "Deposit to first bet",  "counter", counter("median_lag_minutes", "Deposit to first bet", "", 0, " min")),
+            ("lag",      "Deposit to first bet",  "counter", counter("median_lag_seconds", "Deposit to first bet", "", 0, " s")),
+            ("fast",     "Betting within a minute", "counter", counter("within_a_minute_pct", "Betting within a minute", "", 0, "%")),
         ]),
         ("polymarket_headline", "Omniston · Polymarket headline", "", [
             ("deposits",    "Into Polymarket",   "counter", counter("deposits_usd", "Into Polymarket", "$")),
@@ -438,10 +446,12 @@ def layout() -> list[tuple]:
         ("viz", "assets_bought::pie", 3, 7),
         ("viz", "trade_size_distribution::chart", 6, 6),
         ("text", POLYMARKET_NOTE, 6, 6),
-        ("viz", "polymarket_impact::wagered", 3, 4),
-        ("viz", "polymarket_impact::traders", 3, 4),
-        ("viz", "polymarket_impact::multiple", 3, 4),
-        ("viz", "polymarket_impact::lag", 3, 4),
+        ("viz", "polymarket_impact::deposited", 2, 4),
+        ("viz", "polymarket_impact::wagered", 2, 4),
+        ("viz", "polymarket_impact::multiple", 2, 4),
+        ("viz", "polymarket_impact::traders", 2, 4),
+        ("viz", "polymarket_impact::lag", 2, 4),
+        ("viz", "polymarket_impact::fast", 2, 4),
         ("viz", "polymarket_headline::deposits", 2, 4),
         ("viz", "polymarket_headline::withdrawals", 2, 4),
         ("viz", "polymarket_headline::wallets", 2, 4),
