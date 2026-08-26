@@ -12,7 +12,7 @@ USER_AGENT = "omniston-dune/0.1 (+https://docs.ston.fi/developer-section/omnisto
 
 
 class ConfigError(RuntimeError):
-    """Raised when a required setting is absent."""
+    """Raised when a required setting is absent or unusable."""
 
 
 @dataclass(frozen=True)
@@ -33,11 +33,32 @@ def _require(env: Mapping[str, str], name: str) -> str:
     return value
 
 
+def _int(env: Mapping[str, str], name: str, default: int) -> int:
+    """Read an integer override, naming the variable and value when it is bad.
+
+    A bare int() here raises ValueError, which __main__ does not catch -- it
+    catches this project's own error types and lets anything else through as a
+    bug with its traceback. A typo in an environment variable is not a bug, so
+    it gets an operator-readable message like every other config failure.
+    """
+    raw = env.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(
+            f"Environment variable {name} must be a whole number of seconds "
+            f"since the Unix epoch, but is {raw!r}. Remove it to use the "
+            f"default of {default}."
+        ) from exc
+
+
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     return Settings(
         dune_api_key=_require(env, "DUNE_API_KEY"),
         dune_namespace=_require(env, "DUNE_NAMESPACE"),
         user_agent=env.get("OMNISTON_USER_AGENT", USER_AGENT),
-        history_start_ts=int(env.get("HISTORY_START_TS", DEFAULT_HISTORY_START_TS)),
+        history_start_ts=_int(env, "HISTORY_START_TS", DEFAULT_HISTORY_START_TS),
     )

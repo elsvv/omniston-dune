@@ -5,12 +5,16 @@ from omniston_dune import cubes, omniston
 
 
 def test_iter_windows_never_exceeds_the_31_day_cap():
+    # Asserted against WINDOW_DAYS, not the service's 31-day cap: a window of
+    # exactly 31 days is what the service rejects, so a bound of `<= 31 * 86400`
+    # would pass at the value that fails in production.
     start, end = 0, 100 * 86400
     windows = list(cubes.iter_windows(start, end))
     assert windows[0][0] == start
     assert windows[-1][1] == end
+    assert cubes.WINDOW_DAYS < 31
     for from_ts, to_ts in windows:
-        assert to_ts - from_ts <= 31 * 86400
+        assert to_ts - from_ts <= cubes.WINDOW_DAYS * 86400
     # Windows must tile the range with no gaps.
     for earlier, later in zip(windows, windows[1:]):
         assert earlier[1] == later[0]

@@ -40,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
             datasets = pipeline.build_datasets(settings)
             for table_name, rows in datasets.items():
                 logging.info("%s: %d rows (dry run, nothing written)", table_name, len(rows))
+            # Validate even though nothing will be written: an empty table, a
+            # gap in day coverage or a null in a non-nullable column are
+            # precisely the problems a dry run exists to surface, and skipping
+            # the check left it unable to find any of them.
+            pipeline.validate_datasets(datasets)
             return 0
 
         written = pipeline.run(settings, query_ids=args.query_ids)

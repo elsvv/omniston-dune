@@ -29,3 +29,19 @@ def test_load_settings_allows_overriding_history_start():
         }
     )
     assert settings.history_start_ts == 1780000000
+
+
+def test_load_settings_rejects_a_malformed_history_start():
+    # A bare int() raises ValueError, which __main__ does not catch: the
+    # operator would get a traceback instead of a message naming the typo.
+    with pytest.raises(config.ConfigError) as excinfo:
+        config.load_settings(
+            {
+                "DUNE_API_KEY": "abc123",
+                "DUNE_NAMESPACE": "my_user",
+                "HISTORY_START_TS": "2026-04-01",
+            }
+        )
+    message = str(excinfo.value)
+    assert "HISTORY_START_TS" in message
+    assert "'2026-04-01'" in message
