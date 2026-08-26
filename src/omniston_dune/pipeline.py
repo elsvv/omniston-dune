@@ -50,19 +50,18 @@ def build_datasets(
     return datasets
 
 
-def publish(
-    settings: Settings,
-    datasets: dict[str, list[dict]],
-    *,
-    dune_module=dune,
-) -> dict[str, int]:
-    """Create, clear and refill each table. Only called once fetching succeeded."""
-    written: dict[str, int] = {}
+def validate_datasets(datasets: dict[str, list[dict]]) -> None:
+    """Reject nulls in non-nullable columns, across every table, writing nothing.
+
+    Dune rejects the whole insert if a non-nullable column receives null, and
+    it rejects it AFTER the table has been cleared. Checking table by table
+    inside the publish loop is not enough: a bad row in the last table would
+    be found only once the earlier tables had already been created, cleared
+    and refilled, leaving Dune holding a mix of today's data and the previous
+    run's. This runs as a pre-pass, before the first Dune call of any kind.
+    """
     for table_name, rows in datasets.items():
         schema = schemas.TABLES[table_name]
-        # Dune rejects the whole insert if a non-nullable column receives null,
-        # and it rejects it AFTER the table has been cleared. Catch it here,
-        # before anything is destroyed.
         required = [c["name"] for c in schema if not c.get("nullable", True)]
         for index, row in enumerate(rows):
             missing = [name for name in required if row.get(name) is None]
@@ -71,6 +70,20 @@ def publish(
                     f"{table_name} row {index} has null in non-nullable "
                     f"column(s) {missing}; refusing to clear the table"
                 )
+
+
+def publish(
+    settings: Settings,
+    datasets: dict[str, list[dict]],
+    *,
+    dune_module=dune,
+) -> dict[str, int]:
+    """Create, clear and refill each table. Only called once fetching succeeded."""
+    validate_datasets(datasets)
+
+    written: dict[str, int] = {}
+    for table_name, rows in datasets.items():
+        schema = schemas.TABLES[table_name]
         dune_module.create_table(
             settings.dune_api_key,
             settings.dune_namespace,
@@ -88,7 +101,10 @@ def publish(
             # The table was cleared immediately before this insert, so a short
             # write leaves it truncated -- neither empty nor intact. Say so
             # explicitly; a silent shortfall would understate the dashboard
-            # until the next successful run.
+            # until the next successful run. Against the real client this line
+            # is unreachable: dune.insert_rows raises DuneError naming the
+            # truncation rather than returning a short count. It is kept as a
+            # cheap guard on the dune_module seam.
             raise PublishError(
                 f"{table_name}: cleared, then inserted {sent} of {len(rows)} rows. "
                 f"The table is now truncated and must be refilled by a rerun."

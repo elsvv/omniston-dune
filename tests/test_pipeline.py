@@ -62,10 +62,17 @@ def test_build_datasets_projects_rows_onto_the_schema(monkeypatch):
 
 def test_run_fetches_everything_before_touching_dune(monkeypatch):
     # If a fetch raises, Dune must be untouched — no cleared, empty tables.
+    # The LAST fetch is the one that raises: every cube succeeds and only the
+    # orders fetch blows up. Raising on the first fetch would prove nothing,
+    # since a per-table fetch-then-publish loop would also leave Dune untouched
+    # in that case. Here six cube datasets are already in hand, so `calls == []`
+    # holds only if publishing waits for every fetch to complete.
+    monkeypatch.setattr(pipeline.cubes, "fetch_cube", lambda *a, **k: [])
     monkeypatch.setattr(
-        pipeline.cubes, "fetch_cube", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("api down"))
+        pipeline.orders,
+        "iter_orders",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("api down")),
     )
-    monkeypatch.setattr(pipeline.orders, "iter_orders", lambda *a, **k: iter([]))
     fake = FakeDune()
     with pytest.raises(RuntimeError, match="api down"):
         pipeline.run(SETTINGS, now_ts=2000, dune_module=fake)
@@ -85,12 +92,43 @@ def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
 def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
     # `day` and `lt` are declared non-nullable. Dune would reject the insert
     # after the clear had already run, leaving the table empty.
+    #
+    # The bad row sits in the SECOND table on purpose. Validating inside the
+    # publish loop passes a single-table version of this test while still
+    # creating, clearing and refilling table one before it ever looks at table
+    # two — Dune left holding today's data for one table and the previous
+    # run's for the other. Nothing may be written at all.
     fake = FakeDune()
-    with pytest.raises(pipeline.PublishError, match="non-nullable"):
+    with pytest.raises(pipeline.PublishError) as excinfo:
         pipeline.publish(
-            SETTINGS, {"omniston_daily_total": [{"day": None}]}, dune_module=fake
+            SETTINGS,
+            {
+                "omniston_daily_total": [{"day": "x"}],
+                "omniston_daily_resolver": [{"day": "x"}, {"day": None}],
+            },
+            dune_module=fake,
         )
+    message = str(excinfo.value)
+    assert "omniston_daily_resolver" in message
+    assert "row 1" in message
+    assert "non-nullable" in message and "'day'" in message
     assert fake.calls == []
+
+
+def test_validate_datasets_accepts_a_clean_mapping():
+    pipeline.validate_datasets(
+        {
+            "omniston_daily_total": [{"day": "x"}],
+            "omniston_orders": [{"lt": "1", "status": None}],
+        }
+    )
+
+
+def test_validate_datasets_names_the_table_row_and_columns():
+    with pytest.raises(pipeline.PublishError) as excinfo:
+        pipeline.validate_datasets({"omniston_orders": [{"lt": "1"}, {"lt": None}]})
+    assert "omniston_orders row 1" in str(excinfo.value)
+    assert "'lt'" in str(excinfo.value)
 
 
 def test_publish_raises_when_fewer_rows_land_than_were_sent():

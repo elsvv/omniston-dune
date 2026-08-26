@@ -6,6 +6,20 @@ import responses
 from omniston_dune import dune
 
 
+@pytest.fixture(autouse=True)
+def no_write_throttle(monkeypatch):
+    """Run the write throttle at zero delay.
+
+    The real 4.5s spacing exists to stay under Dune's 15 writes/minute free
+    tier; at that interval this file alone would take a minute. The interval
+    is read from the module attribute on every call, so setting it to 0 here
+    disables the sleep without touching the code path under test. The tests
+    that exercise the throttle and the 429 retry set their own values.
+    """
+    monkeypatch.setattr(dune, "MIN_WRITE_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(dune, "_last_write_monotonic", None)
+
+
 @responses.activate
 def test_create_table_posts_the_schema():
     responses.post(f"{dune.BASE_URL}/uploads", json={"success": True})
@@ -101,3 +115,97 @@ def test_execute_query_returns_the_execution_id():
         f"{dune.BASE_URL}/query/123/execute", json={"execution_id": "01ABC"}
     )
     assert dune.execute_query("key", 123) == "01ABC"
+
+
+@responses.activate
+def test_writes_are_spaced_by_the_minimum_interval(monkeypatch):
+    # One run issues 7 creates + 7 clears + 7 inserts plus an execute per
+    # dashboard query -- over thirty writes against a 15/minute limit. The
+    # throttle is what keeps that burst legal, so assert it actually sleeps
+    # between consecutive writes rather than only on paper.
+    slept = []
+    monkeypatch.setattr(dune, "MIN_WRITE_INTERVAL_SECONDS", 4.5)
+    monkeypatch.setattr(dune.time, "sleep", slept.append)
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", json={})
+
+    dune.clear_table("key", "me", "t")
+    assert slept == []  # nothing to wait for on the first write of the process
+
+    dune.clear_table("key", "me", "t")
+    assert len(slept) == 1
+    assert 4.0 < slept[0] <= 4.5
+
+
+@responses.activate
+def test_a_rate_limited_write_is_retried():
+    # A 429 mid-publish would otherwise leave some tables refreshed and others
+    # stale. Retry-After is honoured, so this retries immediately.
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear",
+        status=429,
+        headers={"Retry-After": "0"},
+        json={"error": "rate limited"},
+    )
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", json={})
+
+    dune.clear_table("key", "me", "t")
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_persistent_rate_limiting_raises_after_the_retries_are_spent():
+    for _ in range(3):
+        responses.post(
+            f"{dune.BASE_URL}/uploads/me/t/clear",
+            status=429,
+            headers={"Retry-After": "0"},
+            json={"error": "rate limited"},
+        )
+
+    with pytest.raises(dune.DuneError, match="429"):
+        dune.clear_table("key", "me", "t")
+    # The original attempt plus MAX_RATE_LIMIT_RETRIES, and no more.
+    assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_retry_after_falls_back_to_a_full_minute_when_absent(monkeypatch):
+    # The limit is per minute, so without a Retry-After header the only wait
+    # guaranteed to clear the window is the whole window.
+    slept = []
+    monkeypatch.setattr(dune.time, "sleep", slept.append)
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/clear", status=429, json={"error": "slow down"}
+    )
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", json={})
+
+    dune.clear_table("key", "me", "t")
+    assert slept == [dune.DEFAULT_RETRY_AFTER_SECONDS]
+
+
+@responses.activate
+def test_insert_rows_reports_truncation_when_a_later_chunk_fails():
+    # clear-then-insert has no rollback: publish clears the table before the
+    # first chunk, so a chunk failing after an earlier one succeeded leaves the
+    # table holding part of today's data. The error has to say that, or the
+    # operator reads "insert failed" as "nothing was written".
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/insert", json={})
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/insert", status=500, json={"error": "boom"}
+    )
+
+    with pytest.raises(dune.DuneError, match="truncated") as excinfo:
+        dune.insert_rows("key", "me", "t", [{"a": i} for i in range(4)], chunk_size=2)
+    assert "2 of 4 rows" in str(excinfo.value)
+
+
+@responses.activate
+def test_insert_rows_first_chunk_failure_does_not_claim_truncation():
+    # Nothing landed, so the table is simply empty -- today's message stands.
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/insert", status=500, json={"error": "boom"}
+    )
+
+    with pytest.raises(dune.DuneError) as excinfo:
+        dune.insert_rows("key", "me", "t", [{"a": i} for i in range(4)], chunk_size=2)
+    assert "truncated" not in str(excinfo.value)
