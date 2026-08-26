@@ -53,6 +53,25 @@ and recreating the affected tables:
 then re-running `python -m omniston_dune`, which is a full refresh anyway. Space
 the deletes out — they count against the same write limit as everything else.
 
+## What the data says that the documentation does not
+
+**The service's daily aggregates bucket by order creation, not settlement.**
+Verified by comparing a month of daily counts both ways: create-time buckets
+matched the cube exactly, finalize-time buckets were off by sixteen orders.
+Anything charted beside a cube-derived series has to agree with that.
+
+**Every cross-chain input is a token and a dollar stablecoin.** Not one native
+coin appears on the input side. That is what makes a per-trade dollar value
+computable from raw units and decimals with no price feed: 12,893 of 12,931
+settled swaps price this way, summing to $1,717,949 against the cube's
+$1,718,632, a gap of 0.04%.
+
+**Settled and finalized are different populations and must not be divided by
+each other.** `filled_orders_volume_usd` counts only swaps that settled;
+`finalized_orders_count` counts settled plus failed. Around 7% of cross-chain
+orders fail, so a ratio that mixes the two is wrong by that much. Every query
+here now pairs like with like.
+
 ## What Dune's chart options actually do
 
 Two findings, both established by rendering the result rather than by reading

@@ -6,9 +6,7 @@ with flows as (
          then 1 else -1 end as direction,
     case when output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
          then cast(actual_output_units as double)
-         else cast(actual_input_units  as double) end / 1e6 as usd,
-    case when output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
-         then dst_trader_address else src_trader_address end as wallet
+         else cast(actual_input_units  as double) end / 1e6 as usd
   from dune.elsvv.omniston_orders
   where status = 'TRADE_STATUS_FULLY_FILLED' and src_chain_id != dst_chain_id
     and (output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
@@ -34,7 +32,11 @@ select
   sum(case when direction =  1 then usd end)                    as deposits_usd,
   sum(case when direction = -1 then usd end)                    as withdrawals_usd,
   sum(direction * usd)                                          as net_usd,
-  count(distinct wallet)                                        as wallets,
+  -- No wallet count here. "Wallets funded" is a Polymarket deposit-wallet
+  -- idea, and this query knows nothing about which addresses the Polymarket
+  -- factory created -- it counted every address on either side of a pUSD swap,
+  -- withdrawal senders included, and called them funded. The factory-verified
+  -- count lives in polymarket_impact, which is the query that can prove it.
   count(*)                                                      as transfers,
   approx_percentile(case when direction = 1 then usd end, 0.5)  as median_deposit_usd,
   100.0 * count(*) / nullif((select swaps from xc), 0)          as share_of_swaps_pct,

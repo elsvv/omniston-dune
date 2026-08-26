@@ -319,7 +319,7 @@ def spec() -> list[tuple]:
          "Which apps send cross-chain flow, and what they charge for it.", [
             ("table", "Integrator league table", "table",
              table([("integrator", "Integrator"), ("volume_usd", "Volume $"),
-                    ("swaps", "Swaps"), ("avg_swap_usd", "Avg swap $"),
+                    ("orders", "Orders"), ("avg_order_usd", "Avg order $"),
                     ("fees_earned_usd", "Fees earned $"),
                     ("take_rate_bps", "Take rate, bps")], 12)),
         ]),
@@ -394,7 +394,7 @@ def spec() -> list[tuple]:
         ("polymarket_headline", "Omniston · Polymarket headline", "", [
             ("deposits",    "Into Polymarket",   "counter", counter("deposits_usd", "Into Polymarket", "$")),
             ("withdrawals", "Out of Polymarket", "counter", counter("withdrawals_usd", "Out of Polymarket", "$")),
-            ("wallets",     "Wallets funded",    "counter", counter("wallets", "Wallets funded")),
+            ("transfers",   "pUSD transfers",    "counter", counter("transfers", "pUSD transfers")),
             ("median",      "Median transfer",   "counter", counter("median_deposit_usd", "Median transfer", "$")),
             ("share",       "Share of cross-chain swaps", "counter",
              counter("share_of_swaps_pct", "Share of cross-chain swaps", "", 0, "%")),
@@ -454,7 +454,7 @@ def layout() -> list[tuple]:
         ("viz", "polymarket_impact::fast", 2, 4),
         ("viz", "polymarket_headline::deposits", 2, 4),
         ("viz", "polymarket_headline::withdrawals", 2, 4),
-        ("viz", "polymarket_headline::wallets", 2, 4),
+        ("viz", "polymarket_headline::transfers", 2, 4),
         ("viz", "polymarket_headline::median", 2, 4),
         ("viz", "polymarket_headline::share", 2, 4),
         ("viz", "polymarket_headline::volshare", 2, 4),

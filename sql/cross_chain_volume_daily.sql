@@ -3,6 +3,11 @@
 -- same as "everything except TON-to-TON": intrachain swaps also occur on
 -- base, bnb, ethereum, polygon, arbitrum and avalanche, and counting those
 -- as cross-chain would overstate the headline.
+--
+-- The 7-day average is over the last seven rows, not the last seven calendar
+-- days. A day with no cross-chain volume produces no row, so in the first
+-- sparse weeks the window reaches further back than a week. From June onward
+-- every day has volume and the two are the same thing.
 with daily as (
   select
     day,

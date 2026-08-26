@@ -15,7 +15,9 @@ with first_week as (
   select src_trader_address as trader,
          min(date_trunc('week', from_unixtime(order_create_time))) as cohort_week
   from dune.elsvv.omniston_orders
+  -- Settled swaps only, matching the headline trader count.
   where src_chain_id != dst_chain_id and src_trader_address is not null
+    and status = 'TRADE_STATUS_FULLY_FILLED'
   group by 1
 ),
 activity as (
@@ -23,7 +25,9 @@ activity as (
          src_trader_address as trader,
          date_trunc('week', from_unixtime(order_create_time)) as active_week
   from dune.elsvv.omniston_orders
+  -- Settled swaps only, matching the headline trader count.
   where src_chain_id != dst_chain_id and src_trader_address is not null
+    and status = 'TRADE_STATUS_FULLY_FILLED'
 ),
 sizes as (
   select cohort_week, count(*) as cohort_size from first_week group by 1

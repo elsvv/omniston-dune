@@ -1,6 +1,10 @@
 -- Omniston · latency funnel
 -- Four stages, from the moment a quote is requested to final settlement.
 -- Percentiles, not averages: the tail is long and a mean would flatter it.
+--
+-- The stages do not add up to the total and are not meant to: the median of a
+-- sum is not the sum of the medians, because no single swap sits at the median
+-- of every stage. Read each row on its own.
 with o as (
   select t_quote, t_decide, t_settle, t_total
   from dune.elsvv.omniston_orders

@@ -33,7 +33,10 @@ funded as (
   group by 1
 ),
 -- A wallet can sit on either side of a trade, so both sides are unioned. The
--- block_month bound is required: without it the scan is slow enough to time out.
+-- block_month bound is required: without it the scan is slow enough to time
+-- out. April is comfortably before the first cross-chain swap of any kind
+-- (June), so nothing is lost -- but it is a floor on Polymarket trades, not on
+-- deposits, and would have to move if history ever started earlier.
 traded as (
   select addr, count(*) as trades, sum(amount) as wagered_usd, min(block_time) as first_trade
   from (

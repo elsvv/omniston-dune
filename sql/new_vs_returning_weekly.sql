@@ -5,7 +5,10 @@ with first_seen as (
   select src_trader_address as trader,
          min(date_trunc('week', from_unixtime(order_create_time))) as cohort_week
   from dune.elsvv.omniston_orders
-  where src_chain_id != dst_chain_id
+  -- Settled swaps only, matching the headline trader count. A wallet whose
+  -- only order failed has not traded, and counting it as a new trader who
+  -- then never returned reports churn that never happened.
+  where src_chain_id != dst_chain_id and status = 'TRADE_STATUS_FULLY_FILLED'
   group by 1
 ),
 activity as (
@@ -13,7 +16,10 @@ activity as (
          src_trader_address as trader,
          date_trunc('week', from_unixtime(order_create_time)) as active_week
   from dune.elsvv.omniston_orders
-  where src_chain_id != dst_chain_id
+  -- Settled swaps only, matching the headline trader count. A wallet whose
+  -- only order failed has not traded, and counting it as a new trader who
+  -- then never returned reports churn that never happened.
+  where src_chain_id != dst_chain_id and status = 'TRADE_STATUS_FULLY_FILLED'
 )
 select
   a.active_week as week,

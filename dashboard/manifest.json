@@ -29,7 +29,6 @@
     "polymarket_headline::deposits": 12485245,
     "polymarket_headline::withdrawals": 12485247,
     "polymarket_headline::median": 12485255,
-    "polymarket_headline::wallets": 12485273,
     "headline::volume": 12485666,
     "headline::swaps": 12485702,
     "headline::traders": 12485707,
@@ -59,6 +58,8 @@
     "fee_headline::apps": 12489175,
     "polymarket_headline::volshare": 12491531,
     "corridor_share_daily::chart": 12492460,
-    "trader_cohorts::chart": 12492529
+    "trader_cohorts::chart": 12492529,
+    "polymarket_impact::deposited": 12497862,
+    "polymarket_impact::fast": 12497888
   }
 }

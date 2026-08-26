@@ -397,3 +397,44 @@ cannot silently survive a future change to these definitions.
 One consequence is worth recording because it changes a headline claim: measured
 against cross-chain swaps rather than all swaps, Polymarket flows are 76.7% of
 Omniston's cross-chain activity, not the quarter previously reported.
+
+## 9. Amendment, 2026-08-26 — methodology audit
+
+Every query was validated against the source data. Four findings, in descending
+order of how much they change what the dashboard says.
+
+**Trade size was the distribution of route-day averages.** It bucketed
+`filled_orders_volume_usd / finalized_orders_count` per (day, route, status)
+group, so a day holding one large trade beside a hundred small ones landed
+entirely in one middling bucket. Section 2.4 recorded that order rows carry no
+USD, which is why the cube was used; what it missed is that every cross-chain
+input asset is a token and a dollar stablecoin, so a per-trade dollar value is
+raw units over decimals with no price feed. 12,893 of 12,931 settled swaps price
+that way and sum to $1,717,949 against the cube's $1,718,632.
+
+The size buckets run to "over $1,000" and stop there. Nothing on the dashboard
+characterises the shape of the top of that range: the distribution is reported,
+not explained.
+
+**Settled and finalized were divided by each other.** `filled_orders_volume_usd`
+counts settled swaps; `finalized_orders_count` counts settled plus failed. The
+headline showed the first beside the second, and the integrator league divided
+one by the other. Around 7% of cross-chain orders fail, so every such ratio was
+wrong by that much. All of them now pair like with like.
+
+**Daily aggregates bucket by order creation, not settlement.** Established by
+comparing a month of daily counts both ways: create matched the cube exactly,
+finalize was off by sixteen orders. Two order-level queries were bucketing by
+settlement and are now on creation. `polymarket_impact` deliberately keeps
+settlement time, because the wait to a first bet starts when the money lands.
+
+**"Wallets funded" counted every address on either side of a pUSD swap.**
+Withdrawal senders included, and with no reference to the Polymarket deposit
+wallet factory that gives the phrase its meaning. Removed from the flow query,
+which cannot prove it; the factory-verified count stays in `polymarket_impact`,
+which can.
+
+Two approximations were confirmed correct and are now documented rather than
+silent: the latency funnel's stage percentiles do not sum to its total and are
+not meant to, and the chain-flow Sankey drops corridors under $100 of lifetime
+volume.

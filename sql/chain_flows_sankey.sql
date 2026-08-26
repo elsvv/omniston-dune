@@ -1,6 +1,8 @@
 -- Omniston · chain-to-chain flow
 -- Source and destination labels are suffixed differently so a chain that both
 -- sends and receives does not collapse into a single node and create a cycle.
+-- Corridors under $100 of lifetime volume are dropped; a ribbon that thin is
+-- a rendering artefact rather than a route.
 select
   src_chain_id || ' (from)' as source,
   dst_chain_id || ' (to)'   as target,

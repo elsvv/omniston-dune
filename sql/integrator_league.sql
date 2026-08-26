@@ -7,8 +7,12 @@ select
   coalesce(substr(integrator_address, 1, 6) || '…' || substr(integrator_address, -4),
            'unattributed') as integrator,
   sum(filled_orders_volume_usd) as volume_usd,
-  sum(finalized_orders_count)   as swaps,
-  sum(filled_orders_volume_usd) / nullif(sum(finalized_orders_count), 0) as avg_swap_usd,
+  sum(finalized_orders_count)   as orders,
+  -- Finalized over finalized. This cube has no status dimension, so a filled
+  -- count cannot be had from it, and filled volume divided by finalized orders
+  -- would quietly scale the average down by the failure rate. Both sides of
+  -- this ratio are therefore the finalized ones.
+  sum(finalized_orders_volume_usd) / nullif(sum(finalized_orders_count), 0) as avg_order_usd,
   sum(integrator_fees_usd)      as fees_earned_usd,
   10000.0 * sum(integrator_fees_usd) / nullif(sum(filled_orders_volume_usd), 0) as take_rate_bps
 from dune.elsvv.omniston_daily_integrator
