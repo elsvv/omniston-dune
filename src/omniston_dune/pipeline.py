@@ -29,6 +29,11 @@ class PublishError(RuntimeError):
     """A table was cleared but not fully refilled."""
 
 
+def format_timestamp(ts: int) -> str:
+    """Format a Unix timestamp the way the API formats its own `time_period`."""
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(TIMESTAMP_FORMAT)
+
+
 def build_datasets(
     settings: Settings,
     *,
@@ -44,18 +49,27 @@ def build_datasets(
     now_ts = int(time.time()) if now_ts is None else now_ts
     start_ts = settings.history_start_ts
 
+    # One timestamp for the whole run, captured before the first fetch and
+    # stamped onto every row of every table. Without it, a Dune-side failure
+    # that lands after table four leaves tables one to three holding today's
+    # data and five to seven holding yesterday's, with no way to tell from SQL.
+    run_ts = format_timestamp(now_ts)
+
     datasets: dict[str, list[dict]] = {}
 
     for table_name, dimensions in cubes.CUBE_SPECS.items():
         schema = schemas.CUBE_COLUMNS[table_name]
         raw = cubes.fetch_cube(start_ts, now_ts, dimensions, session=session)
         datasets[table_name] = [
-            schemas.project(cubes.normalise_row(row), schema) for row in raw
+            schemas.project({**cubes.normalise_row(row), "run_ts": run_ts}, schema)
+            for row in raw
         ]
         log.info("fetched %s: %d rows", table_name, len(datasets[table_name]))
 
     datasets["omniston_orders"] = [
-        schemas.project(orders.flatten_order(order), schemas.ORDERS_COLUMNS)
+        schemas.project(
+            {**orders.flatten_order(order), "run_ts": run_ts}, schemas.ORDERS_COLUMNS
+        )
         for order in orders.iter_orders(start_ts, now_ts, session=session)
     ]
     log.info("fetched omniston_orders: %d rows", len(datasets["omniston_orders"]))

@@ -85,6 +85,10 @@ def test_normalise_row_produces_every_column_each_cube_schema_declares():
     out = cubes.normalise_row(row)
     for cube, columns in schemas.CUBE_COLUMNS.items():
         for column in columns:
+            if column["name"] == "run_ts":
+                # Stamped by the pipeline from the run's own clock, not derived
+                # from the API row; see test_pipeline for its own coverage.
+                continue
             assert column["name"] in out, f"{cube}.{column['name']}"
 
 
@@ -118,5 +122,20 @@ def test_flatten_order_keys_match_orders_columns_exactly():
         "order_finalize_time": "1787654161",
     }
     row = orders.flatten_order(order)
-    expected = {c["name"] for c in schemas.ORDERS_COLUMNS}
+    # `run_ts` is the one column the flattener does not produce: it comes from
+    # the run's clock, and the pipeline stamps it onto every row.
+    expected = {c["name"] for c in schemas.ORDERS_COLUMNS} - {"run_ts"}
     assert set(row.keys()) == expected
+
+
+def test_every_table_carries_a_non_nullable_run_ts():
+    # Uploaded Dune tables have immutable schemas: a column missing here means
+    # deleting and recreating the table to add it later. `run_ts` records which
+    # run wrote a row, so a run that failed partway -- some tables refreshed,
+    # others still on the previous run's data -- is detectable from SQL.
+    assert len(schemas.TABLES) == 7
+    for table, columns in schemas.TABLES.items():
+        by_name = {c["name"]: c for c in columns}
+        assert "run_ts" in by_name, table
+        assert by_name["run_ts"]["type"] == "timestamp", table
+        assert by_name["run_ts"]["nullable"] is False, table

@@ -11,6 +11,15 @@ def _col(name: str, type_: str, nullable: bool = True) -> dict:
 
 _DAY = [_col("day", "timestamp", nullable=False)]
 
+# Which run wrote this row. Every row of every table in one run carries the
+# identical value, so a run that dies partway -- leaving tables one to three on
+# today's data and five to seven on yesterday's -- is visible from SQL instead
+# of being undetectable. It is formatted exactly like the API's own
+# `time_period` values, so `run_ts` and `day` parse identically in DuneSQL.
+# Dune upload schemas are immutable: a column not added now cannot be added
+# later without deleting and recreating the table.
+_RUN_TS = [_col("run_ts", "timestamp", nullable=False)]
+
 _METRIC_COLUMNS = [_col(metric, "double") for metric in cubes.ALL_METRICS]
 
 # `omniston_daily_output_asset` excludes only the two input-side volume
@@ -26,14 +35,17 @@ _OUTPUT_ASSET_METRICS = [
 ]
 
 CUBE_COLUMNS: dict[str, list[dict]] = {
-    "omniston_daily_total": _DAY + _METRIC_COLUMNS,
+    "omniston_daily_total": _DAY + _RUN_TS + _METRIC_COLUMNS,
     "omniston_daily_chainpair": _DAY
+    + _RUN_TS
     + [_col("src_chain_id", "string"), _col("dst_chain_id", "string"), _col("status", "string")]
     + _METRIC_COLUMNS,
     "omniston_daily_resolver": _DAY
+    + _RUN_TS
     + [_col("resolver_id", "string"), _col("status", "string")]
     + _METRIC_COLUMNS,
     "omniston_daily_input_asset": _DAY
+    + _RUN_TS
     + [
         _col("input_asset_chain", "string"),
         _col("input_asset_kind", "string"),
@@ -41,6 +53,7 @@ CUBE_COLUMNS: dict[str, list[dict]] = {
     ]
     + _METRIC_COLUMNS,
     "omniston_daily_output_asset": _DAY
+    + _RUN_TS
     + [
         _col("output_asset_chain", "string"),
         _col("output_asset_kind", "string"),
@@ -48,12 +61,14 @@ CUBE_COLUMNS: dict[str, list[dict]] = {
     ]
     + _OUTPUT_ASSET_METRICS,
     "omniston_daily_integrator": _DAY
+    + _RUN_TS
     + [_col("integrator_chain", "string"), _col("integrator_address", "string")]
     + _METRIC_COLUMNS,
 }
 
 ORDERS_COLUMNS: list[dict] = [
     _col("lt", "string", nullable=False),
+    *_RUN_TS,
     _col("status", "string"),
     _col("quote_id", "string"),
     _col("src_chain_id", "string"),

@@ -10,6 +10,9 @@ SETTINGS = config.Settings(
 DAY_1 = "2026-08-24T00:00:00Z"
 DAY_2 = "2026-08-25T00:00:00Z"
 
+# `run_ts` is non-nullable in every table, so every fixture row carries one.
+RUN_TS = "2026-08-26T03:00:00Z"
+
 
 class FakeDune:
     def __init__(self, fail_on_insert=False):
@@ -85,7 +88,11 @@ def test_run_fetches_everything_before_touching_dune(monkeypatch):
 
 def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
     fake = FakeDune()
-    pipeline.publish(SETTINGS, {"omniston_daily_total": [{"day": DAY_1}]}, dune_module=fake)
+    pipeline.publish(
+        SETTINGS,
+        {"omniston_daily_total": [{"day": DAY_1, "run_ts": RUN_TS}]},
+        dune_module=fake,
+    )
     assert fake.calls == [
         ("create", "omniston_daily_total"),
         ("clear", "omniston_daily_total"),
@@ -107,8 +114,11 @@ def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
         pipeline.publish(
             SETTINGS,
             {
-                "omniston_daily_total": [{"day": DAY_1}],
-                "omniston_daily_resolver": [{"day": DAY_1}, {"day": None}],
+                "omniston_daily_total": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_resolver": [
+                    {"day": DAY_1, "run_ts": RUN_TS},
+                    {"day": None, "run_ts": RUN_TS},
+                ],
             },
             dune_module=fake,
         )
@@ -122,15 +132,22 @@ def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
 def test_validate_datasets_accepts_a_clean_mapping():
     pipeline.validate_datasets(
         {
-            "omniston_daily_total": [{"day": DAY_1}],
-            "omniston_orders": [{"lt": "1", "status": None}],
+            "omniston_daily_total": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_orders": [{"lt": "1", "status": None, "run_ts": RUN_TS}],
         }
     )
 
 
 def test_validate_datasets_names_the_table_row_and_columns():
     with pytest.raises(pipeline.PublishError) as excinfo:
-        pipeline.validate_datasets({"omniston_orders": [{"lt": "1"}, {"lt": None}]})
+        pipeline.validate_datasets(
+            {
+                "omniston_orders": [
+                    {"lt": "1", "run_ts": RUN_TS},
+                    {"lt": None, "run_ts": RUN_TS},
+                ]
+            }
+        )
     assert "omniston_orders row 1" in str(excinfo.value)
     assert "'lt'" in str(excinfo.value)
 
@@ -147,7 +164,12 @@ def test_publish_raises_when_fewer_rows_land_than_were_sent():
     with pytest.raises(pipeline.PublishError, match="truncated"):
         pipeline.publish(
             SETTINGS,
-            {"omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}]},
+            {
+                "omniston_daily_total": [
+                    {"day": DAY_1, "run_ts": RUN_TS},
+                    {"day": DAY_2, "run_ts": RUN_TS},
+                ]
+            },
             dune_module=fake,
         )
 
@@ -184,13 +206,16 @@ def test_run_executes_the_dashboard_queries_last(monkeypatch):
 def test_validate_datasets_accepts_a_healthy_full_dataset():
     pipeline.validate_datasets(
         {
-            "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
-            "omniston_daily_chainpair": [{"day": DAY_1}],
-            "omniston_daily_resolver": [{"day": DAY_1}],
-            "omniston_daily_input_asset": [{"day": DAY_1}],
-            "omniston_daily_output_asset": [{"day": DAY_1}],
-            "omniston_daily_integrator": [{"day": DAY_1}],
-            "omniston_orders": [{"lt": "1787654164994885497"}],
+            "omniston_daily_total": [
+                {"day": DAY_1, "run_ts": RUN_TS},
+                {"day": DAY_2, "run_ts": RUN_TS},
+            ],
+            "omniston_daily_chainpair": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_resolver": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_input_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_output_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_integrator": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_orders": [{"lt": "1787654164994885497", "run_ts": RUN_TS}],
         }
     )
 
@@ -199,12 +224,15 @@ def test_validate_datasets_rejects_an_empty_orders_table():
     with pytest.raises(pipeline.PublishError) as excinfo:
         pipeline.validate_datasets(
             {
-                "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
-                "omniston_daily_chainpair": [{"day": DAY_1}],
-                "omniston_daily_resolver": [{"day": DAY_1}],
-                "omniston_daily_input_asset": [{"day": DAY_1}],
-                "omniston_daily_output_asset": [{"day": DAY_1}],
-                "omniston_daily_integrator": [{"day": DAY_1}],
+                "omniston_daily_total": [
+                    {"day": DAY_1, "run_ts": RUN_TS},
+                    {"day": DAY_2, "run_ts": RUN_TS},
+                ],
+                "omniston_daily_chainpair": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_resolver": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_input_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_output_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_integrator": [{"day": DAY_1, "run_ts": RUN_TS}],
                 "omniston_orders": [],
             }
         )
@@ -219,13 +247,16 @@ def test_validate_datasets_rejects_an_empty_cube():
     with pytest.raises(pipeline.PublishError) as excinfo:
         pipeline.validate_datasets(
             {
-                "omniston_daily_total": [{"day": DAY_1}, {"day": DAY_2}],
-                "omniston_daily_chainpair": [{"day": DAY_1}],
+                "omniston_daily_total": [
+                    {"day": DAY_1, "run_ts": RUN_TS},
+                    {"day": DAY_2, "run_ts": RUN_TS},
+                ],
+                "omniston_daily_chainpair": [{"day": DAY_1, "run_ts": RUN_TS}],
                 "omniston_daily_resolver": [],
-                "omniston_daily_input_asset": [{"day": DAY_1}],
-                "omniston_daily_output_asset": [{"day": DAY_1}],
-                "omniston_daily_integrator": [{"day": DAY_1}],
-                "omniston_orders": [{"lt": "1787654164994885497"}],
+                "omniston_daily_input_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_output_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_integrator": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_orders": [{"lt": "1787654164994885497", "run_ts": RUN_TS}],
             }
         )
     message = str(excinfo.value)
@@ -242,15 +273,15 @@ def test_validate_datasets_rejects_a_gap_in_day_coverage():
         pipeline.validate_datasets(
             {
                 "omniston_daily_total": [
-                    {"day": "2026-08-24T00:00:00Z"},
-                    {"day": "2026-08-28T00:00:00Z"},
+                    {"day": "2026-08-24T00:00:00Z", "run_ts": RUN_TS},
+                    {"day": "2026-08-28T00:00:00Z", "run_ts": RUN_TS},
                 ],
-                "omniston_daily_chainpair": [{"day": DAY_1}],
-                "omniston_daily_resolver": [{"day": DAY_1}],
-                "omniston_daily_input_asset": [{"day": DAY_1}],
-                "omniston_daily_output_asset": [{"day": DAY_1}],
-                "omniston_daily_integrator": [{"day": DAY_1}],
-                "omniston_orders": [{"lt": "1787654164994885497"}],
+                "omniston_daily_chainpair": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_resolver": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_input_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_output_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_daily_integrator": [{"day": DAY_1, "run_ts": RUN_TS}],
+                "omniston_orders": [{"lt": "1787654164994885497", "run_ts": RUN_TS}],
             }
         )
     message = str(excinfo.value)
@@ -265,14 +296,45 @@ def test_validate_datasets_tolerates_a_single_missing_day():
     pipeline.validate_datasets(
         {
             "omniston_daily_total": [
-                {"day": "2026-08-24T00:00:00Z"},
-                {"day": "2026-08-26T00:00:00Z"},
+                {"day": "2026-08-24T00:00:00Z", "run_ts": RUN_TS},
+                {"day": "2026-08-26T00:00:00Z", "run_ts": RUN_TS},
             ],
-            "omniston_daily_chainpair": [{"day": DAY_1}],
-            "omniston_daily_resolver": [{"day": DAY_1}],
-            "omniston_daily_input_asset": [{"day": DAY_1}],
-            "omniston_daily_output_asset": [{"day": DAY_1}],
-            "omniston_daily_integrator": [{"day": DAY_1}],
-            "omniston_orders": [{"lt": "1787654164994885497"}],
+            "omniston_daily_chainpair": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_resolver": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_input_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_output_asset": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_daily_integrator": [{"day": DAY_1, "run_ts": RUN_TS}],
+            "omniston_orders": [{"lt": "1787654164994885497", "run_ts": RUN_TS}],
         }
     )
+
+
+def test_every_row_of_every_table_carries_the_same_run_ts(monkeypatch):
+    # Dune upload schemas are immutable, so this column had to exist before the
+    # first real run. It is what makes a half-finished run visible from SQL: if
+    # a failure hits table four, tables one to three hold this run_ts and the
+    # rest still hold the previous run's.
+    monkeypatch.setattr(
+        pipeline.cubes,
+        "fetch_cube",
+        lambda *a, **k: [
+            {"time_period": DAY_1, "finalized_orders_count": "1"},
+            {"time_period": DAY_2, "finalized_orders_count": "2"},
+        ],
+    )
+    monkeypatch.setattr(
+        pipeline.orders,
+        "iter_orders",
+        lambda *a, **k: iter(
+            [{"lt": "1787654164994885497"}, {"lt": "1787654164994885498"}]
+        ),
+    )
+
+    # 2026-08-26T03:00:00Z
+    datasets = pipeline.build_datasets(SETTINGS, now_ts=1787713200)
+
+    stamps = {row["run_ts"] for rows in datasets.values() for row in rows}
+    assert stamps == {"2026-08-26T03:00:00Z"}
+    # Same shape as the API's own `time_period`, so both parse identically.
+    assert len(datasets["omniston_orders"]) == 2
+    assert datasets["omniston_daily_total"][0]["day"] == DAY_1
