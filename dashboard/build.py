@@ -230,10 +230,12 @@ swaps and have barely begun to charge for these."""
 
 POLYMARKET_NOTE = """## Polymarket
 
-**Most of Omniston's cross-chain flow is Polymarket money.**
+**Most of the traffic, a minority of the money.**
 
-Polymarket gives every user their own deposit wallet and settles in its own stablecoin, so \
-these are counted exactly rather than guessed — no address heuristics involved.
+Polymarket transfers are small — the median is single digits — so they are the majority of \
+cross-chain swaps and well under half the volume. Polymarket gives every user their own \
+deposit wallet and settles in its own stablecoin, so these are counted exactly rather than \
+guessed, with no address heuristics involved.
 
 Wagered volume is gross, not profit: $100 recycled through forty bets counts as $4,000."""
 
@@ -376,11 +378,12 @@ def spec() -> list[tuple]:
         ("polymarket_headline", "Omniston · Polymarket headline", "", [
             ("deposits",    "Into Polymarket",   "counter", counter("deposits_usd", "Into Polymarket", "$")),
             ("withdrawals", "Out of Polymarket", "counter", counter("withdrawals_usd", "Out of Polymarket", "$")),
-            ("net",         "Net into Polymarket", "counter", counter("net_usd", "Net into Polymarket", "$")),
             ("wallets",     "Wallets funded",    "counter", counter("wallets", "Wallets funded")),
             ("median",      "Median transfer",   "counter", counter("median_deposit_usd", "Median transfer", "$")),
             ("share",       "Share of cross-chain swaps", "counter",
              counter("share_of_swaps_pct", "Share of cross-chain swaps", "", 0, "%")),
+            ("volshare",    "Share of cross-chain volume", "counter",
+             counter("share_of_volume_pct", "Share of cross-chain volume", "", 0, "%")),
         ]),
         ("polymarket_flows_daily", "Omniston · Polymarket flows",
          "Deposits and withdrawals per day, with the net trend.", [
@@ -432,10 +435,10 @@ def layout() -> list[tuple]:
         ("viz", "polymarket_impact::lag", 3, 4),
         ("viz", "polymarket_headline::deposits", 2, 4),
         ("viz", "polymarket_headline::withdrawals", 2, 4),
-        ("viz", "polymarket_headline::net", 2, 4),
         ("viz", "polymarket_headline::wallets", 2, 4),
         ("viz", "polymarket_headline::median", 2, 4),
         ("viz", "polymarket_headline::share", 2, 4),
+        ("viz", "polymarket_headline::volshare", 2, 4),
         ("viz", "polymarket_flows_daily::chart", 6, 8),
         ("text", METHODOLOGY, 6, 4),
     ]
