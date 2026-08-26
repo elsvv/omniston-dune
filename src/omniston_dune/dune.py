@@ -175,11 +175,13 @@ def create_table(
 ) -> dict:
     """Create the table, treating an already-existing table as success.
 
-    Creation costs credits, so this is called once per table per run and the
-    conflict path is the normal path after the first run. The substring check
-    is restricted to client-error statuses so a 5xx that happens to leak
-    "already exists" in its body (e.g. a database error) is never mistaken
-    for a pre-existing table.
+    Verified against the live API today (not documentation, which does not
+    commit to these codes): creating a brand-new table returns HTTP 201.
+    Re-creating a table whose schema matches what is already there returns
+    HTTP 200, with `already_existed: true` in the body and a message saying
+    the table "matched the request" -- Dune has already checked the schema
+    itself before returning that 200, so a schema mismatch cannot reach this
+    branch. Any other status is a real error.
     """
     response = _post(
         f"{BASE_URL}/uploads",
@@ -193,10 +195,8 @@ def create_table(
         headers=_headers(api_key, "application/json"),
         timeout=60,
     )
-    if response.status_code == 200:
+    if response.status_code in (200, 201):
         return response.json()
-    if response.status_code in (400, 409) and "already exists" in response.text.lower():
-        return {"already_exists": True}
     raise _fail(f"create_table {namespace}.{table_name}", response)
 
 
@@ -207,7 +207,11 @@ def clear_table(api_key: str, namespace: str, table_name: str) -> None:
         headers=_headers(api_key),
         timeout=120,
     )
-    if response.status_code != 200:
+    # Any 2xx counts as success, not just 200: create_table returning 201 for
+    # this same API proves its status codes are not fully documented, and an
+    # unexpected-but-successful status must never be mistaken for a failed
+    # clear.
+    if not (200 <= response.status_code < 300):
         raise _fail(f"clear_table {namespace}.{table_name}", response)
 
 
@@ -219,15 +223,28 @@ def insert_rows(
     *,
     chunk_size: int = CHUNK_SIZE,
 ) -> int:
-    """Append rows as NDJSON.
+    """Append rows as NDJSON, returning how many rows Dune reports it wrote.
 
-    Each request is all-or-nothing: HTTP 200 means every row in that request
-    landed, any other status means none of them did.
+    Each request is all-or-nothing: a 2xx means every row in that request
+    landed, any other status means none of them did. Any 2xx is accepted, not
+    just 200 -- create_table returning 201 for this same API shows its status
+    codes are not fully documented, and demanding an exact code here is the
+    dangerous direction: the caller clears the table immediately before
+    calling this, so wrongly rejecting a successful insert leaves that table
+    empty.
+
+    The return value is the sum of each chunk's `rows_written`, not the
+    number of rows sent, so a Dune-side shortfall is visible to the caller
+    instead of the count always trivially matching what was sent. If a
+    response omits `rows_written`, that chunk's length is used instead --
+    treating the field's absence as zero would turn a healthy insert into a
+    spurious failure.
     """
     if not rows:
         return 0
 
     sent = 0
+    written = 0
     for start in range(0, len(rows), chunk_size):
         chunk = rows[start : start + chunk_size]
         body = "\n".join(json.dumps(row, separators=(",", ":")) for row in chunk)
@@ -237,7 +254,7 @@ def insert_rows(
             headers=_headers(api_key, "application/x-ndjson"),
             timeout=300,
         )
-        if response.status_code != 200:
+        if not (200 <= response.status_code < 300):
             if sent:
                 # The caller cleared this table before inserting, and earlier
                 # chunks have already landed. There is no rollback, so the
@@ -252,7 +269,9 @@ def insert_rows(
                 )
             raise _fail(f"insert into {namespace}.{table_name}", response)
         sent += len(chunk)
-    return sent
+        rows_written = response.json().get("rows_written")
+        written += len(chunk) if rows_written is None else rows_written
+    return written
 
 
 def execute_query(api_key: str, query_id: int) -> str:

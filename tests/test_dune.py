@@ -35,38 +35,46 @@ def test_create_table_posts_the_schema():
 
 
 @responses.activate
+def test_create_table_on_a_201_returns_the_body_and_does_not_raise():
+    # Verified live: creating a brand-new table returns 201, not 200. This is
+    # the exact status that broke the first real run.
+    body = {
+        "namespace": "me",
+        "table_name": "t",
+        "full_name": "dune.me.t",
+        "example_query": "select * from dune.me.t",
+        "message": "Table created successfully",
+    }
+    responses.post(f"{dune.BASE_URL}/uploads", status=201, json=body)
+    result = dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
+    assert result == body
+
+
+@responses.activate
 def test_create_table_treats_an_existing_table_as_success():
-    # Re-creating is expected on every run after the first.
+    # Re-creating is expected on every run after the first. Verified live:
+    # this comes back as 200 with `already_existed: true`, not a 4xx.
     responses.post(
         f"{dune.BASE_URL}/uploads",
-        status=409,
-        json={"error": "table already exists"},
+        status=200,
+        json={
+            "namespace": "me",
+            "table_name": "t",
+            "full_name": "dune.me.t",
+            "already_existed": True,
+            "message": "Table already existed and matched the request",
+        },
     )
-    dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
+    result = dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
+    assert result["already_existed"] is True
 
 
 @responses.activate
-def test_create_table_treats_a_400_already_exists_as_success():
-    # Dune's docs only promise creating a duplicate table "will fail", without
-    # committing to a status code, so 400 is accepted alongside 409.
-    responses.post(
-        f"{dune.BASE_URL}/uploads",
-        status=400,
-        json={"error": "table already exists"},
-    )
-    dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
-
-
-@responses.activate
-def test_create_table_raises_on_a_server_error_even_if_it_mentions_already_exists():
-    # Regression guard: a 5xx whose body happens to contain "already exists"
-    # (e.g. a leaked database error) must never be mistaken for a
-    # pre-existing table, since that would skip creation and let the run
-    # proceed to clear/insert against a table that was never created.
+def test_create_table_raises_on_a_500():
     responses.post(
         f"{dune.BASE_URL}/uploads",
         status=500,
-        json={"error": "internal error: relation already exists"},
+        json={"error": "internal error"},
     )
     with pytest.raises(dune.DuneError):
         dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
@@ -98,6 +106,37 @@ def test_insert_rows_chunks_large_payloads():
 
 
 @responses.activate
+def test_insert_rows_sums_rows_written_across_chunks():
+    # The count returned has to be real: publish compares it against the
+    # number of rows it tried to send, and a Dune-side shortfall on one
+    # chunk must show up in the total even though the other chunk was fine.
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/insert", json={"rows_written": 2})
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/insert", json={"rows_written": 1})
+    written = dune.insert_rows(
+        "key", "me", "t", [{"a": i} for i in range(4)], chunk_size=2
+    )
+    assert written == 3
+
+
+@responses.activate
+def test_insert_rows_falls_back_to_chunk_length_when_rows_written_is_absent():
+    # A response missing `rows_written` must not be read as zero -- that would
+    # turn a healthy insert into a spurious PublishError in the caller.
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/insert", json={})
+    written = dune.insert_rows("key", "me", "t", [{"a": 1}, {"a": 2}])
+    assert written == 2
+
+
+@responses.activate
+def test_insert_rows_treats_a_201_as_success():
+    responses.post(
+        f"{dune.BASE_URL}/uploads/me/t/insert", status=201, json={"rows_written": 1}
+    )
+    written = dune.insert_rows("key", "me", "t", [{"a": 1}])
+    assert written == 1
+
+
+@responses.activate
 def test_insert_rows_does_nothing_when_there_are_no_rows():
     assert dune.insert_rows("key", "me", "t", []) == 0
     assert len(responses.calls) == 0
@@ -108,6 +147,15 @@ def test_clear_table_posts_to_the_clear_path():
     responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", json={})
     dune.clear_table("key", "me", "t")
     assert responses.calls[0].request.url.endswith("/uploads/me/t/clear")
+
+
+@responses.activate
+def test_clear_table_accepts_any_2xx_status():
+    # Widened alongside create_table's 201: this API's status codes are not
+    # fully documented, and rejecting an unexpected-but-successful clear is
+    # the dangerous direction, not accepting one.
+    responses.post(f"{dune.BASE_URL}/uploads/me/t/clear", status=202, json={})
+    dune.clear_table("key", "me", "t")
 
 
 @responses.activate
