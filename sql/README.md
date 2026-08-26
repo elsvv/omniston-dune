@@ -13,17 +13,17 @@ Dashboard: https://dune.com/elsvv/omniston-cross-chain
 | 8477613 | `cross_chain_volume_daily.sql` | Growth |
 | 8480436 | `chain_volume_daily.sql` | Growth |
 | 8478332 | `new_vs_returning_weekly.sql` | Growth |
+| 8485054 | `trader_cohorts.sql` | Growth |
 | 8480487 | `fee_headline.sql` | What a swap costs |
 | 8480540 | `fee_split_daily.sql` | What a swap costs |
-| 8480549 | `integrator_fee_share.sql` | What a swap costs |
 | 8480557 | `integrator_league.sql` | What a swap costs |
 | 8478385 | `chain_flows_sankey.sql` | Where the money moves |
+| 8485049 | `corridor_share_daily.sql` | Where the money moves |
 | 8478339 | `net_flow_by_chain.sql` | Where the money moves |
 | 8480620 | `hourly_clock.sql` | Where the money moves |
 | 8478399 | `latency_funnel.sql` | How fast it settles |
 | 8480677 | `settlement_speed_daily.sql` | How fast it settles |
-| 8478457 | `resolver_share_daily.sql` | The resolver market |
-| 8478465 | `resolver_league.sql` | The resolver market |
+| 8478465 | `resolver_league.sql` | Who settles the trades |
 | 8480706 | `assets_sold.sql` | What people trade |
 | 8480715 | `assets_bought.sql` | What people trade |
 | 8478514 | `trade_size_distribution.sql` | What people trade |
@@ -53,12 +53,30 @@ and recreating the affected tables:
 then re-running `python -m omniston_dune`, which is a full refresh anyway. Space
 the deletes out — they count against the same write limit as everything else.
 
+## What Dune's chart options actually do
+
+Two findings, both established by rendering the result rather than by reading
+documentation, which does not cover them:
+
+**Stacked charts stack but do not normalise.** Neither `normalizeToPercentage`
+nor `series.percentValues` has any effect, and `series.stacking: "percent"`
+stacks without normalising. A share that should add to 100 has to be computed
+in SQL.
+
+**The percent tick format multiplies by a hundred.** Feed `tickFormat: "0%"` a
+column already expressed in percent and the axis reads `10000%`. Emit fractions.
+
+**The cohort visualisation renders blank** for every option shape tried —
+Redash-style `dateColumn`/`stageColumn`/`valueColumn`/`totalColumn` and a
+`columnMapping` of the same roles. Retention is drawn as one line per cohort
+instead.
+
 ## A note on writing to Dune
 
 The free tier allows 15 write requests per minute and the CLI does not pace
 itself, so creating several queries or visualizations back to back returns
-`429 Too many requests`. `build.py` spaces writes 4.5 seconds apart; the ingest
-pipeline uses 6 seconds for the same reason.
+`429 Too many requests`. `build.py` spaces writes 6 seconds apart; the ingest
+pipeline uses the same interval.
 
 Query *executions* are capped separately, on how many may be in flight at once.
 Firing twenty with `--no-wait` returns `429` for most of them, which reads as

@@ -9,7 +9,6 @@
     "net_flow_by_chain": 8478339,
     "chain_flows_sankey": 8478385,
     "latency_funnel": 8478399,
-    "resolver_share_daily": 8478457,
     "resolver_league": 8478465,
     "trade_size_distribution": 8478514,
     "polymarket_impact": 8479423,
@@ -20,7 +19,9 @@
     "hourly_clock": 8480620,
     "settlement_speed_daily": 8480677,
     "assets_sold": 8480706,
-    "assets_bought": 8480715
+    "assets_bought": 8480715,
+    "corridor_share_daily": 8485049,
+    "trader_cohorts": 8485054
   },
   "visualizations": {
     "cross_chain_volume_daily::chart": 12485058,
@@ -39,7 +40,6 @@
     "net_flow_by_chain::chart": 12485819,
     "chain_flows_sankey::sankey": 12485866,
     "latency_funnel::chart": 12485881,
-    "resolver_share_daily::chart": 12485942,
     "resolver_league::table": 12485989,
     "trade_size_distribution::chart": 12486001,
     "polymarket_impact::wagered": 12486584,
@@ -57,6 +57,8 @@
     "polymarket_headline::share": 12489032,
     "fee_headline::total": 12489173,
     "fee_headline::apps": 12489175,
-    "polymarket_headline::volshare": 12491531
+    "polymarket_headline::volshare": 12491531,
+    "corridor_share_daily::chart": 12492460,
+    "trader_cohorts::chart": 12492529
   }
 }
