@@ -57,10 +57,23 @@ table carries fees and counts, just not the input-side volume columns.
 
 ## Cost
 
-Roughly 14 write operations and a handful of query executions per day, against
-2,500 free-tier credits per month. The Dune client paces every write request
-6.0 seconds apart to stay under the free tier's 15-requests-per-minute write
-limit, and retries a 429 up to twice — so a full run takes several minutes,
-not seconds; that is expected, not a hang. Check consumption at dune.com →
-Settings → Billing during the first week and replace this estimate with a
-measured figure rather than trusting it.
+Measured on the first full run, 2026-08-26, against a free-tier account:
+
+| | |
+| --- | --- |
+| Credits | **15.12** of 2,500/month, covering one full run plus a few ad-hoc queries |
+| Storage | **59.1 MB** of 95.4 MB |
+| Wall clock | **4m 38s**, most of it the deliberate pacing between writes |
+| Rows | 41,457 orders and 6,539 cube rows across seven tables |
+
+Credits are not the constraint. **Storage is.** The orders table is about 1.4 KB
+per row across its 38 columns, and every run republishes the entire history, so
+the footprint grows with the history itself — roughly 0.4 MB a day at the
+current rate of ~300 orders/day. That leaves on the order of three months of
+headroom before the free tier's cap.
+
+When that approaches, the cheapest fix is to stop publishing the full order
+history: keep the cubes for all time and trim `omniston_orders` to a rolling
+window, since the latency and fill-quality charts it feeds only ever look at
+recent behaviour. Dropping unused columns would buy less, and raising the tier
+buys time rather than solving it.
