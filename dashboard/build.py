@@ -160,7 +160,7 @@ def counter(col: str, label: str, prefix: str = "", decimals: int = 0,
 def chart(kind: str, x: str, series: list[tuple[str, str, str]],
           y_title: str = "", tick: str | None = None,
           stacking: str | None = None, sort_x: bool = True,
-          series_col: str | None = None) -> dict:
+          series_col: str | None = None, x_title: str = "") -> dict:
     """series: (column, display name, one of column|line|area).
 
     `series_col` names a category column that splits one value column into a
@@ -181,7 +181,7 @@ def chart(kind: str, x: str, series: list[tuple[str, str, str]],
         "globalSeriesType": kind, "sortX": sort_x,
         "legend": {"enabled": len(series) > 1 or bool(series_col)},
         "series": {"stacking": stacking},
-        "xAxis": {"title": {"text": ""}},
+        "xAxis": {"title": {"text": x_title}},
         "yAxis": [y_axis],
         "columnMapping": mapping, "seriesOptions": options,
     }
@@ -293,7 +293,8 @@ def spec() -> list[tuple]:
          "Each line is one week's new traders, followed forward.", [
             ("chart", "Trader retention by cohort", "chart",
              chart("line", "weeks_after", [("retained", "Retained", "line")],
-                   "Still swapping", "0%", series_col="cohort")),
+                   "Still swapping", "0%", series_col="cohort",
+                   x_title="Weeks after first swap")),
         ]),
         ("fee_headline", "Omniston · Fee headline", "", [
             ("rate",  "Fee on a swap", "counter",
