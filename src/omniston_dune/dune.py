@@ -28,6 +28,12 @@ MAX_RATE_LIMIT_RETRIES = 2
 # full minute is the shortest wait guaranteed to clear the window.
 DEFAULT_RETRY_AFTER_SECONDS = 60.0
 
+# A Retry-After longer than this is treated as malformed or hostile: waiting
+# it out would exceed any sane job budget, so the wait is clamped and the
+# request simply retries sooner, failing fast with a DuneError if the limit
+# really is still in force.
+MAX_RETRY_AFTER_SECONDS = 300.0
+
 # monotonic timestamp of the last outbound write request, or None before the
 # first one. Wall clock is not used: it can jump backwards (NTP, DST) and turn
 # the throttle into either a no-op or a very long sleep.
@@ -73,7 +79,7 @@ def _retry_after_seconds(response: requests.Response) -> float:
     if raw is None:
         return DEFAULT_RETRY_AFTER_SECONDS
     try:
-        return max(0.0, float(str(raw).strip()))
+        return min(MAX_RETRY_AFTER_SECONDS, max(0.0, float(str(raw).strip())))
     except ValueError:
         # Retry-After may also be an HTTP-date. Rather than guess at a format,
         # fall back to the full window.

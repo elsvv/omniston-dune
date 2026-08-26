@@ -1,6 +1,7 @@
 import json
 
 import pytest
+import requests
 import responses
 
 from omniston_dune import dune
@@ -209,3 +210,21 @@ def test_insert_rows_first_chunk_failure_does_not_claim_truncation():
     with pytest.raises(dune.DuneError) as excinfo:
         dune.insert_rows("key", "me", "t", [{"a": i} for i in range(4)], chunk_size=2)
     assert "truncated" not in str(excinfo.value)
+
+
+def test_retry_after_is_clamped_to_the_cap():
+    # An uncapped wait here would hang an unattended nightly run until an
+    # external timeout killed it mid-publish, instead of failing fast with a
+    # clean DuneError. Asserting on the returned value (not a real sleep)
+    # keeps this instant regardless of the cap's size.
+    response = requests.Response()
+    response.headers["Retry-After"] = "999999999"
+    assert dune._retry_after_seconds(response) == dune.MAX_RETRY_AFTER_SECONDS
+
+
+def test_retry_after_under_the_cap_is_returned_unchanged():
+    # Proves the clamp only bites absurd values and leaves ordinary,
+    # well-behaved Retry-After headers alone.
+    response = requests.Response()
+    response.headers["Retry-After"] = "3"
+    assert dune._retry_after_seconds(response) == 3.0
