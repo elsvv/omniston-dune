@@ -143,7 +143,11 @@ total, about $411. Cross-chain must therefore be defined as
 - End-to-end latency p50 24s, p90 69s, p99 312s.
 - Net 30-day flow: TON +$435k, BNB -$442k.
 
-All of this is a few megabytes at most in any tabular encoding.
+Estimated at design time as a few megabytes. **Measured on 2026-08-26 it is
+59.1 MB in Dune**, of a 95.4 MB free-tier cap — an order of magnitude more than
+estimated, and the binding constraint on this design rather than credits. The
+orders table carries essentially all of it at ~1.4 KB per row. See the README's
+Cost section for the headroom calculation and the mitigation.
 
 ### 2.5 Dune platform
 

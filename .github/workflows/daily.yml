@@ -1,0 +1,37 @@
+name: Refresh Omniston tables in Dune
+
+on:
+  schedule:
+    # 03:20 UTC daily. Off the hour, because scheduled runs cluster on the hour
+    # and get delayed.
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # The refresh is paced deliberately (see MIN_WRITE_INTERVAL_SECONDS in
+    # dune.py), so the normal case is a few minutes, not seconds. This
+    # timeout exists to catch a genuinely stuck run, not to bound the
+    # pacing -- the margin is generous because being killed here mid-publish
+    # would leave some tables refreshed and others stale.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Refresh
+        env:
+          DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
+          DUNE_NAMESPACE: ${{ secrets.DUNE_NAMESPACE }}
+          DASHBOARD_QUERY_IDS: ${{ vars.DASHBOARD_QUERY_IDS }}
+        run: python -m omniston_dune --query-ids "$DASHBOARD_QUERY_IDS"

@@ -60,7 +60,7 @@ def test_load_settings_reads_env():
     )
     assert settings.dune_api_key == "abc123"
     assert settings.dune_namespace == "my_user"
-    # April 1 2026 UTC — history begins around here.
+    # 2026-03-25 UTC: a deliberate week of margin before history begins.
     assert settings.history_start_ts == 1774396800
     assert "omniston-dune" in settings.user_agent
 
@@ -125,8 +125,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-# 2026-04-01T00:00:00Z. Omniston history begins around April 2026; starting
-# earlier costs one wasted request per cube and returns nothing.
+# 2026-03-25T00:00:00Z, a week of margin before history begins in April 2026.
+# Starting earlier costs one wasted request per cube and returns nothing.
 DEFAULT_HISTORY_START_TS = 1774396800
 
 USER_AGENT = "omniston-dune/0.1 (+https://docs.ston.fi/developer-section/omniston/history)"
@@ -1479,6 +1479,7 @@ dashboard blank, and Dune offers no atomic swap.
 **Interfaces:**
 - Consumes: `config.Settings`, `cubes.*`, `orders.*`, `schemas.*`, `dune.*`.
 - Produces:
+  - `pipeline.PublishError(RuntimeError)`
   - `pipeline.build_datasets(settings, *, now_ts, session=None) -> dict[str, list[dict]]`
   - `pipeline.publish(settings, datasets, *, dune_module=dune) -> dict[str, int]`
   - `pipeline.run(settings, *, now_ts=None, query_ids=(), dune_module=dune) -> dict[str, int]`
@@ -1571,6 +1572,34 @@ def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
     ]
 
 
+def test_publish_refuses_a_null_in_a_non_nullable_column_before_clearing():
+    # `day` and `lt` are declared non-nullable. Dune would reject the insert
+    # after the clear had already run, leaving the table empty.
+    fake = FakeDune()
+    with pytest.raises(pipeline.PublishError, match="non-nullable"):
+        pipeline.publish(
+            SETTINGS, {"omniston_daily_total": [{"day": None}]}, dune_module=fake
+        )
+    assert fake.calls == []
+
+
+def test_publish_raises_when_fewer_rows_land_than_were_sent():
+    # The spec requires verifying row counts after each run: clear-then-insert
+    # has no rollback, so a short write leaves a truncated table.
+    class ShortWriter(FakeDune):
+        def insert_rows(self, api_key, namespace, table_name, rows, **kwargs):
+            self.calls.append(("insert", table_name))
+            return len(rows) - 1
+
+    fake = ShortWriter()
+    with pytest.raises(pipeline.PublishError, match="truncated"):
+        pipeline.publish(
+            SETTINGS,
+            {"omniston_daily_total": [{"day": "x"}, {"day": "y"}]},
+            dune_module=fake,
+        )
+
+
 def test_run_executes_the_dashboard_queries_last(monkeypatch):
     monkeypatch.setattr(pipeline.cubes, "fetch_cube", lambda *a, **k: [])
     monkeypatch.setattr(pipeline.orders, "iter_orders", lambda *a, **k: iter([]))
@@ -1600,6 +1629,10 @@ from . import cubes, dune, orders, schemas
 from .config import Settings
 
 log = logging.getLogger(__name__)
+
+
+class PublishError(RuntimeError):
+    """A table was cleared but not fully refilled."""
 
 
 def build_datasets(
@@ -1646,6 +1679,17 @@ def publish(
     written: dict[str, int] = {}
     for table_name, rows in datasets.items():
         schema = schemas.TABLES[table_name]
+        # Dune rejects the whole insert if a non-nullable column receives null,
+        # and it rejects it AFTER the table has been cleared. Catch it here,
+        # before anything is destroyed.
+        required = [c["name"] for c in schema if not c.get("nullable", True)]
+        for index, row in enumerate(rows):
+            missing = [name for name in required if row.get(name) is None]
+            if missing:
+                raise PublishError(
+                    f"{table_name} row {index} has null in non-nullable "
+                    f"column(s) {missing}; refusing to clear the table"
+                )
         dune_module.create_table(
             settings.dune_api_key,
             settings.dune_namespace,
@@ -1656,9 +1700,19 @@ def publish(
         dune_module.clear_table(
             settings.dune_api_key, settings.dune_namespace, table_name
         )
-        written[table_name] = dune_module.insert_rows(
+        sent = dune_module.insert_rows(
             settings.dune_api_key, settings.dune_namespace, table_name, rows
         )
+        if sent != len(rows):
+            # The table was cleared immediately before this insert, so a short
+            # write leaves it truncated -- neither empty nor intact. Say so
+            # explicitly; a silent shortfall would understate the dashboard
+            # until the next successful run.
+            raise PublishError(
+                f"{table_name}: cleared, then inserted {sent} of {len(rows)} rows. "
+                f"The table is now truncated and must be refilled by a rerun."
+            )
+        written[table_name] = sent
         log.info("published %s: %d rows", table_name, written[table_name])
     return written
 
@@ -1689,7 +1743,7 @@ def run(
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_pipeline.py -v`
-Expected: 5 passed
+Expected: 7 passed
 
 - [ ] **Step 5: Run the whole suite**
 
