@@ -39,7 +39,10 @@ def create_table(
     """Create the table, treating an already-existing table as success.
 
     Creation costs credits, so this is called once per table per run and the
-    conflict path is the normal path after the first run.
+    conflict path is the normal path after the first run. The substring check
+    is restricted to client-error statuses so a 5xx that happens to leak
+    "already exists" in its body (e.g. a database error) is never mistaken
+    for a pre-existing table.
     """
     response = requests.post(
         f"{BASE_URL}/uploads",
@@ -55,7 +58,7 @@ def create_table(
     )
     if response.status_code == 200:
         return response.json()
-    if response.status_code == 409 or "already exists" in response.text.lower():
+    if response.status_code in (400, 409) and "already exists" in response.text.lower():
         return {"already_exists": True}
     raise _fail(f"create_table {namespace}.{table_name}", response)
 

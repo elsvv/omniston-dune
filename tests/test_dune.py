@@ -31,6 +31,33 @@ def test_create_table_treats_an_existing_table_as_success():
 
 
 @responses.activate
+def test_create_table_treats_a_400_already_exists_as_success():
+    # Dune's docs only promise creating a duplicate table "will fail", without
+    # committing to a status code, so 400 is accepted alongside 409.
+    responses.post(
+        f"{dune.BASE_URL}/uploads",
+        status=400,
+        json={"error": "table already exists"},
+    )
+    dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
+
+
+@responses.activate
+def test_create_table_raises_on_a_server_error_even_if_it_mentions_already_exists():
+    # Regression guard: a 5xx whose body happens to contain "already exists"
+    # (e.g. a leaked database error) must never be mistaken for a
+    # pre-existing table, since that would skip creation and let the run
+    # proceed to clear/insert against a table that was never created.
+    responses.post(
+        f"{dune.BASE_URL}/uploads",
+        status=500,
+        json={"error": "internal error: relation already exists"},
+    )
+    with pytest.raises(dune.DuneError):
+        dune.create_table("key", "me", "t", [{"name": "day", "type": "timestamp"}])
+
+
+@responses.activate
 def test_create_table_raises_on_a_real_error():
     responses.post(f"{dune.BASE_URL}/uploads", status=400, json={"error": "bad schema"})
     with pytest.raises(dune.DuneError):
