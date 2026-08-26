@@ -9,7 +9,7 @@ def test_load_settings_reads_env():
     )
     assert settings.dune_api_key == "abc123"
     assert settings.dune_namespace == "my_user"
-    # April 1 2026 UTC — history begins around here.
+    # 2026-03-25 UTC: a deliberate week of margin before history begins.
     assert settings.history_start_ts == 1774396800
     assert "omniston-dune" in settings.user_agent
 

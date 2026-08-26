@@ -4,8 +4,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-# 2026-04-01T00:00:00Z. Omniston history begins around April 2026; starting
-# earlier costs one wasted request per cube and returns nothing.
+# 2026-03-25T00:00:00Z, a week of margin before history begins in April 2026.
+# Starting earlier costs one wasted request per cube and returns nothing.
 DEFAULT_HISTORY_START_TS = 1774396800
 
 USER_AGENT = "omniston-dune/0.1 (+https://docs.ston.fi/developer-section/omniston/history)"
