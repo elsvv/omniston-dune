@@ -55,6 +55,8 @@
     "settlement_speed_daily::chart": 12487891,
     "assets_sold::pie": 12487922,
     "assets_bought::pie": 12487963,
-    "polymarket_headline::share": 12489032
+    "polymarket_headline::share": 12489032,
+    "fee_headline::total": 12489173,
+    "fee_headline::apps": 12489175
   }
 }
