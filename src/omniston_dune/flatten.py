@@ -7,6 +7,12 @@ def flatten_asset(asset: dict | None) -> tuple[str | None, str | None, str | Non
     The chain name is whatever key the service used; it is never validated
     against a fixed list, because live data contains chains absent from the
     published protobuf.
+
+    `AssetId` is a protobuf `oneof`, so its JSON encoding always carries
+    exactly one chain key -- taking the first key is not a guess. The
+    nested `kind` is likewise a `oneof`, whose variants are `Empty`
+    (`{}`), a bare string, or a nested message, so `value` is always a
+    string or a dict; there is no other case to branch on.
     """
     if not asset:
         return (None, None, None)

@@ -44,6 +44,18 @@ def test_multi_token_standard_joins_contract_and_token_id():
     assert flatten.flatten_asset(asset) == ("ethereum", "erc1155", "0xabc:42")
 
 
+def test_multi_token_standard_missing_token_id_yields_trailing_colon():
+    # Protobuf JSON omits fields holding their default value, so a 1155
+    # asset with an empty-string token_id arrives without that key at all.
+    # No ERC-1155 or TRC-1155 asset has ever appeared in live data (a
+    # 732-payload survey found zero), so this shape is unobserved -- but
+    # pinning it here makes the "0xabc:" output a defined behaviour rather
+    # than an accident, so any future change to it is a deliberate,
+    # test-breaking decision instead of a silent one.
+    asset = {"ethereum": {"erc1155": {"contract_address": "0xabc"}}}
+    assert flatten.flatten_asset(asset) == ("ethereum", "erc1155", "0xabc:")
+
+
 def test_missing_asset_is_all_none():
     assert flatten.flatten_asset(None) == (None, None, None)
     assert flatten.flatten_asset({}) == (None, None, None)
