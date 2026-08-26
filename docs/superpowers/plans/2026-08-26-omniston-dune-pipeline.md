@@ -1743,7 +1743,7 @@ def run(
 - [ ] **Step 4: Run the tests**
 
 Run: `python -m pytest tests/test_pipeline.py -v`
-Expected: 5 passed
+Expected: 7 passed
 
 - [ ] **Step 5: Run the whole suite**
 
