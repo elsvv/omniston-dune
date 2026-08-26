@@ -35,7 +35,7 @@ makes those corrections self-healing.
 | `omniston_daily_chainpair` | day × src chain × dst chain × status |
 | `omniston_daily_resolver` | day × resolver × status |
 | `omniston_daily_input_asset` | day × input asset |
-| `omniston_daily_output_asset` | day × output asset (counts only) |
+| `omniston_daily_output_asset` | day × output asset (excludes input volume) |
 | `omniston_daily_integrator` | day × integrator |
 | `omniston_orders` | one row per finalized order |
 
@@ -47,15 +47,17 @@ Two things to know before querying them:
 counts one trader once per route. Use `omniston_daily_total` for headline user
 counts, and add a cube if you need uniques at another grain.
 
-Both USD metrics are **input-side**. `omniston_daily_output_asset` therefore
-carries counts and no volume; volume attributed to a bought asset does not exist
-in the source data.
+Both USD metrics are **input-side**. `omniston_daily_output_asset` excludes only
+those two volume metrics -- volume attributed to a bought asset does not exist
+in the source data. Fees still belong at this grain: the protocol collects both
+`protocol_fees_usd` and `integrator_fees_usd` in the output asset, so this
+table carries fees and counts, just not the input-side volume columns.
 
 ## Cost
 
 Roughly 14 write operations and a handful of query executions per day, against
 2,500 free-tier credits per month. The Dune client paces every write request
-4.5 seconds apart to stay under the free tier's 15-requests-per-minute write
+6.0 seconds apart to stay under the free tier's 15-requests-per-minute write
 limit, and retries a 429 up to twice — so a full run takes several minutes,
 not seconds; that is expected, not a hang. Check consumption at dune.com →
 Settings → Billing during the first week and replace this estimate with a

@@ -12,13 +12,19 @@ BASE_URL = "https://api.dune.com/api/v1"
 # megabytes, so chunking is a guard rail rather than a necessity.
 CHUNK_SIZE = 50_000
 
-# Dune's free tier allows 15 requests per minute on write endpoints, and a
-# single run issues far more than that: one create + one clear + one insert per
-# table, plus one execute per dashboard query. Spacing every write 4.5s apart
-# caps the burst at ~13/minute, comfortably under the limit. A 429 midway
-# through a publish would leave some tables refreshed and others stale, with
-# the dashboard silently mixing two different dates.
-MIN_WRITE_INTERVAL_SECONDS = 4.5
+# Dune's free tier allows 15 requests per minute on write endpoints. A run
+# issues one create + one clear + one insert per table (7 tables = 21 write
+# requests) plus one execute per dashboard query -- call it 39 requests for a
+# typical run. Spacing every write 6.0s apart yields a sustained rate of
+# 60 / 6.0 = 10 requests/minute, a 33% margin under the 15/minute limit. The
+# previous value of 4.5s produced 60 / 4.5 = 13.3 requests/minute, only an 11%
+# margin -- close enough to the ceiling that 429s were likely. The extra
+# minute or so of wall-clock this adds to a run buys a large reduction in 429
+# risk, and that is the right trade for an unattended nightly job: a 429 that
+# survives the retries can cost up to a minute of waiting, and in the worst
+# case that pushes the run into the workflow timeout mid-publish -- the exact
+# partial-refresh corruption this throttle exists to prevent.
+MIN_WRITE_INTERVAL_SECONDS = 6.0
 
 # A 429 that slips past the throttle is retried this many times before the
 # caller sees a DuneError.

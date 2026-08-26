@@ -4,7 +4,7 @@ import argparse
 import logging
 import sys
 
-from . import config, pipeline
+from . import config, dune, omniston, pipeline
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -32,19 +32,29 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
-    args = parse_args(sys.argv[1:] if argv is None else argv)
-    settings = config.load_settings()
+    try:
+        args = parse_args(sys.argv[1:] if argv is None else argv)
+        settings = config.load_settings()
 
-    if args.dry_run:
-        datasets = pipeline.build_datasets(settings)
-        for table_name, rows in datasets.items():
-            logging.info("%s: %d rows (dry run, nothing written)", table_name, len(rows))
+        if args.dry_run:
+            datasets = pipeline.build_datasets(settings)
+            for table_name, rows in datasets.items():
+                logging.info("%s: %d rows (dry run, nothing written)", table_name, len(rows))
+            return 0
+
+        written = pipeline.run(settings, query_ids=args.query_ids)
+        for table_name, count in written.items():
+            logging.info("%s: %d rows written", table_name, count)
         return 0
-
-    written = pipeline.run(settings, query_ids=args.query_ids)
-    for table_name, count in written.items():
-        logging.info("%s: %d rows written", table_name, count)
-    return 0
+    except (config.ConfigError, pipeline.PublishError, dune.DuneError, omniston.OmnistonError) as exc:
+        # These are the project's own known error types, each already carrying
+        # a message written for an operator (config.ConfigError especially --
+        # it names the missing setting and how to fix it). Without this catch
+        # that guidance is buried inside a raw traceback. Any other exception
+        # is unexpected and keeps propagating with its traceback intact: an
+        # unexpected error is a bug, and the traceback is the evidence.
+        logging.error("%s", exc)
+        return 1
 
 
 if __name__ == "__main__":

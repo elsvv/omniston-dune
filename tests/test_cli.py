@@ -1,3 +1,5 @@
+import pytest
+
 from omniston_dune import __main__ as cli
 
 
@@ -32,3 +34,20 @@ def test_main_dry_run_fetches_without_publishing(monkeypatch):
     )
     assert cli.main(["--dry-run"]) == 0
     assert calls == ["fetch"]
+
+
+def test_main_returns_1_on_config_error(monkeypatch):
+    def raise_config_error():
+        raise cli.config.ConfigError("Missing required environment variable DUNE_API_KEY.")
+
+    monkeypatch.setattr(cli.config, "load_settings", raise_config_error)
+    assert cli.main([]) == 1
+
+
+def test_main_propagates_unexpected_exceptions(monkeypatch):
+    def raise_unexpected():
+        raise ValueError("boom")
+
+    monkeypatch.setattr(cli.config, "load_settings", raise_unexpected)
+    with pytest.raises(ValueError, match="boom"):
+        cli.main([])

@@ -10,7 +10,12 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The refresh is paced deliberately (see MIN_WRITE_INTERVAL_SECONDS in
+    # dune.py), so the normal case is a few minutes, not seconds. This
+    # timeout exists to catch a genuinely stuck run, not to bound the
+    # pacing -- the margin is generous because being killed here mid-publish
+    # would leave some tables refreshed and others stale.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
