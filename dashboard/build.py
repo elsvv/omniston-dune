@@ -372,8 +372,8 @@ def spec() -> list[tuple]:
             ("pie", "What traders sell", "chart", pie("asset", "volume_usd")),
         ]),
         ("assets_bought", "Omniston · What traders buy",
-         "Share of swaps, by the asset bought.", [
-            ("pie", "What traders buy", "chart", pie("asset", "swaps")),
+         "Share of orders, by the asset bought. Volume is priced on the side sold.", [
+            ("pie", "What traders buy", "chart", pie("asset", "orders")),
         ]),
         ("trade_size_distribution", "Omniston · Trade size distribution",
          "Where the orders are, against where the money is.", [

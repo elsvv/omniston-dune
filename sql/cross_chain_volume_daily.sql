@@ -12,7 +12,8 @@ with daily as (
   select
     day,
     sum(filled_orders_volume_usd) as volume_usd,
-    sum(finalized_orders_count)   as orders
+    sum(case when status = 'TRADE_STATUS_FULLY_FILLED'
+             then finalized_orders_count else 0 end) as swaps
   from dune.elsvv.omniston_daily_chainpair
   where src_chain_id != dst_chain_id
   group by 1
@@ -20,7 +21,7 @@ with daily as (
 select
   day,
   volume_usd,
-  orders,
+  swaps,
   avg(volume_usd) over (order by day rows between 6 preceding and current row) as volume_7d_avg
 from daily
 order by day
