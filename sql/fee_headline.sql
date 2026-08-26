@@ -13,12 +13,13 @@ with t as (
 i as (
   select count(distinct integrator_address) as integrators
   from dune.elsvv.omniston_daily_integrator
-  where integrator_address is not null and integrator_fees_usd > 0
+  where integrator_address is not null and filled_orders_volume_usd > 0
     and src_chain_id != dst_chain_id
 )
 select
   t.integrator_fees_usd,
   t.protocol_fees_usd,
+  t.integrator_fees_usd + t.protocol_fees_usd as total_fees_usd,
   10000.0 * (t.integrator_fees_usd + t.protocol_fees_usd) / nullif(t.volume_usd, 0) as take_rate_bps,
   100.0 * t.integrator_fees_usd
         / nullif(t.integrator_fees_usd + t.protocol_fees_usd, 0) as integrator_share_pct,

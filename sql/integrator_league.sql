@@ -1,6 +1,8 @@
 -- Omniston · integrator league table
--- Each integrator picks its own fee, so take rate varies by an order of
--- magnitude between apps. Shown in basis points: 50 bps is half a percent.
+-- Which apps send cross-chain flow, and what they charge for it. Ordered by
+-- volume rather than by fee, because on cross-chain the fees are still small
+-- enough that ordering by them would rank noise. Take rate is in basis points:
+-- 100 bps is one percent, and each app picks its own.
 select
   coalesce(substr(integrator_address, 1, 6) || '…' || substr(integrator_address, -4),
            'unattributed') as integrator,
@@ -10,8 +12,8 @@ select
   sum(integrator_fees_usd)      as fees_earned_usd,
   10000.0 * sum(integrator_fees_usd) / nullif(sum(filled_orders_volume_usd), 0) as take_rate_bps
 from dune.elsvv.omniston_daily_integrator
-where src_chain_id != dst_chain_id
+where src_chain_id != dst_chain_id and integrator_address is not null
 group by 1
-having sum(integrator_fees_usd) > 0
-order by fees_earned_usd desc
+having sum(filled_orders_volume_usd) > 0
+order by volume_usd desc
 limit 12

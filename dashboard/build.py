@@ -222,8 +222,11 @@ LOGO = """![STON.fi](https://static.ston.fi/logo/ston_symbol.png)"""
 
 FEE_NOTE = """## What a swap costs
 
-Two fees ride on every swap. The app that brought the trade sets and keeps its own cut; the \
-protocol keeps a smaller one. Every app prices itself, so no two take rates below are alike."""
+**About two basis points — two cents on a hundred dollars.**
+
+Two fees ride on a swap: one for the app that brought the trade, one for the protocol. On \
+cross-chain swaps almost all of it is the protocol's. Apps charge real money on same-chain \
+swaps and have barely begun to charge for these."""
 
 POLYMARKET_NOTE = """## Polymarket
 
@@ -285,12 +288,12 @@ def spec() -> list[tuple]:
                    "Traders", stacking="stack")),
         ]),
         ("fee_headline", "Omniston · Fee headline", "", [
-            ("integrator", "Earned by integrators", "counter",
-             counter("integrator_fees_usd", "Earned by integrators", "$")),
-            ("protocol",   "Kept by the protocol",  "counter",
-             counter("protocol_fees_usd", "Kept by the protocol", "$")),
-            ("rate",       "Fee on a swap",         "counter",
+            ("rate",  "Fee on a swap", "counter",
              counter("take_rate_bps", "Fee on a swap", "", 1, " bps")),
+            ("total", "Paid in fees",  "counter",
+             counter("total_fees_usd", "Paid in fees", "$", 0)),
+            ("apps",  "Apps sending flow", "counter",
+             counter("integrators", "Apps sending flow")),
         ]),
         ("fee_split_daily", "Omniston · Fees earned per day",
          "Split between the integrator that brought the trade and the protocol.", [
@@ -299,13 +302,8 @@ def spec() -> list[tuple]:
                                      ("protocol_fees_usd", "Protocol", "column")],
                    "USD", "$0.0a", stacking="stack")),
         ]),
-        ("integrator_fee_share", "Omniston · Share of integrator fees",
-         "How concentrated the integrator business is.", [
-            ("pie", "Share of integrator fees", "chart",
-             pie("integrator", "fees_usd")),
-        ]),
         ("integrator_league", "Omniston · Integrator league table",
-         "Every app sets its own take rate. 100 bps is one percent.", [
+         "Which apps send cross-chain flow, and what they charge for it.", [
             ("table", "Integrator league table", "table",
              table([("integrator", "Integrator"), ("volume_usd", "Volume $"),
                     ("swaps", "Swaps"), ("avg_swap_usd", "Avg swap $"),
@@ -408,11 +406,10 @@ def layout() -> list[tuple]:
         ("viz", "chain_volume_daily::chart", 6, 7),
         ("viz", "new_vs_returning_weekly::chart", 6, 7),
         ("text", FEE_NOTE, 6, 3),
-        ("viz", "fee_headline::integrator", 2, 4),
-        ("viz", "fee_headline::protocol", 2, 4),
         ("viz", "fee_headline::rate", 2, 4),
-        ("viz", "fee_split_daily::chart", 3, 7),
-        ("viz", "integrator_fee_share::pie", 3, 7),
+        ("viz", "fee_headline::total", 2, 4),
+        ("viz", "fee_headline::apps", 2, 4),
+        ("viz", "fee_split_daily::chart", 6, 7),
         ("viz", "integrator_league::table", 6, 7),
         ("text", "## Where the money moves", 6, 1),
         ("viz", "chain_flows_sankey::sankey", 6, 9),

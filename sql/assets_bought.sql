@@ -30,7 +30,8 @@ assets as (
 named as (
   select
     coalesce(case when a.kind = 'native' then upper(a.chain) end,
-             t.symbol, j.symbol, substr(a.address, 1, 6) || '…') as asset,
+             t.symbol, j.symbol, substr(a.address, 1, 6) || '…')
+      || ' · ' || a.chain as asset,
     sum(a.swaps) as swaps
   from assets a
   left join tokens.erc20 t

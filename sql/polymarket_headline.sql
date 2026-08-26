@@ -13,7 +13,7 @@ with flows as (
   where status = 'TRADE_STATUS_FULLY_FILLED' and src_chain_id != dst_chain_id
     and (output_asset_address = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
       or input_asset_address  = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB')
-)
+),
 xc as (
   -- The denominator is cross-chain swaps, not all Omniston swaps: this
   -- dashboard is about the cross-chain business.

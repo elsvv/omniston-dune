@@ -16,7 +16,6 @@
     "chain_volume_daily": 8480436,
     "fee_headline": 8480487,
     "fee_split_daily": 8480540,
-    "integrator_fee_share": 8480549,
     "integrator_league": 8480557,
     "hourly_clock": 8480620,
     "settlement_speed_daily": 8480677,
@@ -49,15 +48,13 @@
     "polymarket_impact::multiple": 12486596,
     "polymarket_impact::lag": 12486601,
     "chain_volume_daily::chart": 12487672,
-    "fee_headline::integrator": 12487693,
-    "fee_headline::protocol": 12487734,
     "fee_headline::rate": 12487739,
     "fee_split_daily::chart": 12487749,
-    "integrator_fee_share::pie": 12487758,
     "integrator_league::table": 12487768,
     "hourly_clock::chart": 12487834,
     "settlement_speed_daily::chart": 12487891,
     "assets_sold::pie": 12487922,
-    "assets_bought::pie": 12487963
+    "assets_bought::pie": 12487963,
+    "polymarket_headline::share": 12489032
   }
 }
