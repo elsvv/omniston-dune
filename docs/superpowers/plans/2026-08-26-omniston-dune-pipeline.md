@@ -1479,6 +1479,7 @@ dashboard blank, and Dune offers no atomic swap.
 **Interfaces:**
 - Consumes: `config.Settings`, `cubes.*`, `orders.*`, `schemas.*`, `dune.*`.
 - Produces:
+  - `pipeline.PublishError(RuntimeError)`
   - `pipeline.build_datasets(settings, *, now_ts, session=None) -> dict[str, list[dict]]`
   - `pipeline.publish(settings, datasets, *, dune_module=dune) -> dict[str, int]`
   - `pipeline.run(settings, *, now_ts=None, query_ids=(), dune_module=dune) -> dict[str, int]`
@@ -1571,6 +1572,23 @@ def test_publish_creates_clears_then_inserts_in_that_order(monkeypatch):
     ]
 
 
+def test_publish_raises_when_fewer_rows_land_than_were_sent():
+    # The spec requires verifying row counts after each run: clear-then-insert
+    # has no rollback, so a short write leaves a truncated table.
+    class ShortWriter(FakeDune):
+        def insert_rows(self, api_key, namespace, table_name, rows, **kwargs):
+            self.calls.append(("insert", table_name))
+            return len(rows) - 1
+
+    fake = ShortWriter()
+    with pytest.raises(pipeline.PublishError, match="truncated"):
+        pipeline.publish(
+            SETTINGS,
+            {"omniston_daily_total": [{"day": "x"}, {"day": "y"}]},
+            dune_module=fake,
+        )
+
+
 def test_run_executes_the_dashboard_queries_last(monkeypatch):
     monkeypatch.setattr(pipeline.cubes, "fetch_cube", lambda *a, **k: [])
     monkeypatch.setattr(pipeline.orders, "iter_orders", lambda *a, **k: iter([]))
@@ -1600,6 +1618,10 @@ from . import cubes, dune, orders, schemas
 from .config import Settings
 
 log = logging.getLogger(__name__)
+
+
+class PublishError(RuntimeError):
+    """A table was cleared but not fully refilled."""
 
 
 def build_datasets(
@@ -1656,9 +1678,19 @@ def publish(
         dune_module.clear_table(
             settings.dune_api_key, settings.dune_namespace, table_name
         )
-        written[table_name] = dune_module.insert_rows(
+        sent = dune_module.insert_rows(
             settings.dune_api_key, settings.dune_namespace, table_name, rows
         )
+        if sent != len(rows):
+            # The table was cleared immediately before this insert, so a short
+            # write leaves it truncated -- neither empty nor intact. Say so
+            # explicitly; a silent shortfall would understate the dashboard
+            # until the next successful run.
+            raise PublishError(
+                f"{table_name}: cleared, then inserted {sent} of {len(rows)} rows. "
+                f"The table is now truncated and must be refilled by a rerun."
+            )
+        written[table_name] = sent
         log.info("published %s: %d rows", table_name, written[table_name])
     return written
 
