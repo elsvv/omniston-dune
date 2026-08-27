@@ -21,7 +21,8 @@
     "assets_sold": 8480706,
     "assets_bought": 8480715,
     "corridor_share_daily": 8485049,
-    "trader_cohorts": 8485054
+    "trader_cohorts": 8485054,
+    "freshness": 8511800
   },
   "visualizations": {
     "cross_chain_volume_daily::chart": 12485058,
@@ -61,6 +62,7 @@
     "trader_cohorts::chart": 12492529,
     "polymarket_impact::deposited": 12497862,
     "polymarket_impact::fast": 12497888,
-    "polymarket_headline::transfers": 12498652
+    "polymarket_headline::transfers": 12498652,
+    "freshness::table": 12519704
   }
 }

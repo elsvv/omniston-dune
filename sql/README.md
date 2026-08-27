@@ -30,6 +30,7 @@ Dashboard: https://dune.com/elsvv/omniston-cross-chain
 | 8479423 | `polymarket_impact.sql` | Polymarket |
 | 8477790 | `polymarket_headline.sql` | Polymarket |
 | 8477772 | `polymarket_flows_daily.sql` | Polymarket |
+| 8511800 | `freshness.sql` | Polymarket |
 
 ## Scope: cross-chain only
 
