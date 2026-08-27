@@ -247,6 +247,9 @@ Every figure here counts cross-chain swaps only — source chain different from 
 Omniston settles same-chain swaps too, and by volume they are the larger business, so \
 including them would answer a different question than the one this dashboard asks.
 
+The refresh runs daily. If the date beside these notes is not close to today, it stopped, \
+and every figure above is as old as that date says.
+
 Volume is what settled, not what was quoted. A failed order delivers nothing and costs the \
 trader nothing, so failures are shown under reliability rather than counted as volume.
 
@@ -406,6 +409,12 @@ def spec() -> list[tuple]:
             ("volshare",    "Share of cross-chain volume", "counter",
              counter("share_of_volume_pct", "Share of cross-chain volume", "", 0, "%")),
         ]),
+        ("freshness", "Omniston · Data freshness",
+         "The run that last wrote these tables.", [
+            ("table", "Data refreshed", "table",
+             table([("refreshed_at", "Data refreshed"),
+                    ("distinct_vintages", "Table vintages")], 1)),
+        ]),
         ("polymarket_flows_daily", "Omniston · Polymarket flows",
          "Deposits and withdrawals per day, with the net trend.", [
             ("chart", "Polymarket flows", "chart",
@@ -464,7 +473,8 @@ def layout() -> list[tuple]:
         ("viz", "polymarket_headline::share", 2, 4),
         ("viz", "polymarket_headline::volshare", 2, 4),
         ("viz", "polymarket_flows_daily::chart", 6, 8),
-        ("text", METHODOLOGY, 6, 4),
+        ("text", METHODOLOGY, 4, 4),
+        ("viz", "freshness::table", 2, 4),
     ]
 
 
