@@ -1,22 +1,12 @@
--- Omniston · the shape of a day, UTC
+-- Omniston · the shape of a week, UTC
 --
--- Averaged over days rather than summed. A raw count per hour answers "when
--- did swaps happen" with a number that grows for no reason other than the
--- dashboard getting older; the average answers "what does an ordinary hour
--- look like", which is the question anyone planning around this actually has.
+-- The same question as the hour-of-day chart asked at the other resolution:
+-- does cross-chain demand keep office hours, or does it run at the weekend
+-- like the rest of crypto? Averaged over weeks for the same reason -- a raw
+-- total per weekday grows with the age of the dashboard and says nothing.
 --
--- Median beside average because the two disagree, and the disagreement is the
--- finding: where the average sits well above the median, that hour is carried
--- by a few busy days rather than being reliably busy.
---
--- Hours with no swaps are zeros, not absences. Left out, an hour that is dead
--- six days in seven would report the average of its one busy day and rank
--- among the busiest of the clock.
---
--- Bucketed by order_create_time. The service's own daily aggregates bucket by
--- creation, verified by comparing a month of daily counts both ways -- create
--- matched exactly, finalize was off by sixteen orders -- so anything charted
--- beside a cube-derived series has to agree with it.
+-- Days with no swaps are zeros, not absences, so the sparse opening weeks
+-- pull the averages down honestly instead of vanishing from them.
 with jettons as (
   select address, symbol, decimals
   from (
@@ -66,30 +56,24 @@ bounds as (
 days as (
   select d from bounds cross join unnest(sequence(d0, d1, interval '1' day)) as t(d)
 ),
-hours as (
-  select h from unnest(sequence(0, 23)) as t(h)
-),
-per_hour as (
-  select cast(ts as date) as day, hour(ts) as h,
+per_day as (
+  select cast(ts as date) as day,
          count(*) as swaps,
          count(distinct trader) as traders,
          sum(usd) as volume_usd
   from priced
-  group by 1, 2
-),
-grid as (
-  select days.d as day, hours.h as h from days cross join hours
+  group by 1
 ),
 filled as (
-  select g.h,
+  select days.d as day,
          coalesce(p.swaps, 0) as swaps,
          coalesce(p.traders, 0) as traders,
          coalesce(p.volume_usd, 0) as volume_usd
-  from grid g
-  left join per_hour p on p.day = g.day and p.h = g.h
+  from days
+  left join per_day p on p.day = days.d
 )
 select
-  lpad(cast(h as varchar), 2, '0') || ':00' as hour_utc,
+  format_datetime(cast(day as timestamp), 'EEEE') as weekday,
   avg(swaps) as avg_swaps,
   approx_percentile(swaps, 0.5) as median_swaps,
   avg(traders) as avg_traders,
@@ -97,5 +81,5 @@ select
   avg(volume_usd) as avg_volume_usd,
   approx_percentile(volume_usd, 0.5) as median_volume_usd
 from filled
-group by h
-order by h
+group by 1, day_of_week(day)
+order by day_of_week(day)

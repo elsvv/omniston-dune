@@ -157,34 +157,59 @@ def counter(col: str, label: str, prefix: str = "", decimals: int = 0,
     }
 
 
-def chart(kind: str, x: str, series: list[tuple[str, str, str]],
+def chart(kind: str, x: str, series: list[tuple],
           y_title: str = "", tick: str | None = None,
           stacking: str | None = None, sort_x: bool = True,
-          series_col: str | None = None, x_title: str = "") -> dict:
-    """series: (column, display name, one of column|line|area).
+          series_col: str | None = None, x_title: str = "",
+          y2_title: str | None = None, tick2: str | None = None,
+          number_format: str | None = None, show_total: bool = False) -> dict:
+    """series: (column, display name, one of column|line|area[, axis]).
+
+    The optional fourth element puts a series on the right-hand axis. That is
+    the only way to draw a cumulative line beside daily bars: by the end of a
+    growing series the running total dwarfs any single day, so on a shared axis
+    the bars flatten into the baseline and the chart shows one line and nothing
+    else. Pass `y2_title` to label that axis -- an unlabelled second axis is
+    worse than none, since the reader has no way to tell which scale a line
+    belongs to.
 
     `series_col` names a category column that splits one value column into a
-    band per category — Dune calls that role "series", and leaving it implicit
+    band per category -- Dune calls that role "series", and leaving it implicit
     makes the chart depend on Dune guessing correctly.
     """
     mapping = {x: "x"}
     if series_col:
         mapping[series_col] = "series"
     options = {}
-    for col, display, stype in series:
+    for col, display, stype, *rest in series:
+        axis = rest[0] if rest else 0
         mapping[col] = "y"
-        options[col] = {"type": stype, "name": display, "yAxis": 0, "zIndex": 0}
-    y_axis: dict = {"title": {"text": y_title}}
+        options[col] = {"type": stype, "name": display, "yAxis": axis, "zIndex": 0}
+    y_axis: dict = {"title": {"text": y_title}, "type": "linear", "includeZero": True}
     if tick:
         y_axis["tickFormat"] = tick
-    return {
+    axes = [y_axis]
+    if y2_title is not None:
+        right: dict = {"title": {"text": y2_title}, "type": "linear"}
+        if tick2:
+            right["tickFormat"] = tick2
+        axes.append(right)
+    series_opts: dict = {"stacking": stacking}
+    if show_total:
+        series_opts["showTotal"] = True
+    out = {
         "globalSeriesType": kind, "sortX": sort_x,
         "legend": {"enabled": len(series) > 1 or bool(series_col)},
-        "series": {"stacking": stacking},
-        "xAxis": {"title": {"text": x_title}},
-        "yAxis": [y_axis],
+        "series": series_opts,
+        "xAxis": {"title": {"text": x_title}, "type": "-"},
+        "yAxis": axes,
         "columnMapping": mapping, "seriesOptions": options,
     }
+    if number_format:
+        # Formats the tooltip and the data labels; the axis has its own
+        # tickFormat and does not inherit this.
+        out["numberFormat"] = number_format
+    return out
 
 
 def pie(category: str, value: str) -> dict:
@@ -241,7 +266,7 @@ The first two rows follow only wallets the Polymarket deposit-wallet factory cre
 is why their deposit figure is smaller than the total pUSD flow in the rows beneath. Wagered \
 volume is gross, not profit: $100 recycled through forty bets counts as $4,000."""
 
-METHODOLOGY = """### Notes
+METHODOLOGY = """## Notes
 
 Every figure here counts cross-chain swaps only — source chain different from destination. \
 Omniston settles same-chain swaps too, and by volume they are the larger business, so \
@@ -274,12 +299,30 @@ def spec() -> list[tuple]:
             ("netton",    "Net flow into TON",    "counter", counter("net_ton_usd", "Net flow into TON", "$")),
             ("median",    "Median swap, seconds", "counter", counter("median_seconds", "Median swap", "", 0, "s")),
             ("success",   "Settled successfully", "counter", counter("success_pct", "Settled successfully", "", 1, "%")),
+            # Placed under the trader chart rather than in the hero row: they
+            # only mean anything next to the new-against-returning split.
+            ("pervol",    "Volume per trader",    "counter", counter("volume_per_trader_usd", "Volume per trader", "$")),
+            ("perswaps",  "Swaps per trader",     "counter", counter("swaps_per_trader", "Swaps per trader", "", 1)),
         ]),
         ("cross_chain_volume_daily", "Omniston · Daily cross-chain volume",
-         "Settled volume per day, with a 7-day average.", [
+         "Settled volume per day, a 7-day average, and the running total.", [
             ("chart", "Daily cross-chain volume", "chart",
              chart("column", "day", [("volume_usd", "Volume", "column"),
-                                     ("volume_7d_avg", "7-day average", "line")], "USD", "$0.0a")),
+                                     ("volume_7d_avg", "7-day average", "line"),
+                                     ("cumulative_usd", "Cumulative", "line", 1)],
+                   "Daily volume", "$0.0a",
+                   y2_title="Cumulative volume", tick2="$0.0a",
+                   number_format="$0,0")),
+            # Same query, second question. Swaps and dollars do not grow at the
+            # same rate -- Polymarket transfers are most of the count and a
+            # minority of the money -- so the shape of one is not the shape of
+            # the other, and a reader who has only seen volume will guess wrong.
+            ("swaps", "Cross-chain swaps per day", "chart",
+             chart("column", "day", [("swaps", "Swaps", "column"),
+                                     ("cumulative_swaps", "Cumulative", "line", 1)],
+                   "Swaps per day", "0,0",
+                   y2_title="Swaps to date", tick2="0.0a",
+                   number_format="0,0")),
         ]),
         ("chain_volume_daily", "Omniston · Volume by destination chain",
          "Which chains are growing, band by band.", [
@@ -291,8 +334,10 @@ def spec() -> list[tuple]:
          "Traders appearing for the first time, against those coming back.", [
             ("chart", "New against returning traders", "chart",
              chart("column", "week", [("new_traders", "New", "column"),
-                                      ("returning_traders", "Returning", "column")],
-                   "Traders", stacking="stack")),
+                                      ("returning_traders", "Returning", "column"),
+                                      ("cumulative_traders", "Traders to date", "line", 1)],
+                   "Traders in week", stacking="stack", show_total=True,
+                   y2_title="Traders to date", number_format="0,0")),
         ]),
         ("trader_cohorts", "Omniston · Trader retention cohorts",
          "Each line is one week's new traders, followed forward.", [
@@ -316,7 +361,8 @@ def spec() -> list[tuple]:
             ("chart", "Fees earned per day", "chart",
              chart("column", "day", [("integrator_fees_usd", "Integrator", "column"),
                                      ("protocol_fees_usd", "Protocol", "column")],
-                   "USD", "$0.0a", stacking="stack")),
+                   "USD", "$0.0a", stacking="stack", show_total=True,
+                   number_format="$0,0.00")),
         ]),
         ("integrator_league", "Omniston · Integrator league table",
          "Which apps send cross-chain flow, and what they charge for it.", [
@@ -344,10 +390,38 @@ def spec() -> list[tuple]:
                    "Share of daily volume", "0%", stacking="normal",
                    series_col="corridor")),
         ]),
-        ("hourly_clock", "Omniston · Swaps by hour of day",
-         "When cross-chain demand actually happens, UTC.", [
-            ("chart", "Swaps by hour of day", "chart",
-             chart("column", "hour_utc", [("swaps", "Swaps", "column")], "Swaps")),
+        ("hourly_clock", "Omniston · The shape of a day",
+         "An ordinary hour over the last eight weeks, UTC. Average against median.", [
+            ("chart", "Swaps and traders by hour", "chart",
+             chart("column", "hour_utc",
+                   [("avg_swaps", "Average swaps", "column"),
+                    ("median_swaps", "Median swaps", "column"),
+                    ("avg_traders", "Average traders", "line", 1),
+                    ("median_traders", "Median traders", "line", 1)],
+                   "Swaps", y2_title="Traders", x_title="Hour of day, UTC",
+                   number_format="0,0.0")),
+            ("volume", "Volume by hour", "chart",
+             chart("column", "hour_utc",
+                   [("avg_volume_usd", "Average", "column"),
+                    ("median_volume_usd", "Median", "column")],
+                   "USD", "$0.0a", x_title="Hour of day, UTC",
+                   number_format="$0,0")),
+        ]),
+        ("weekday_clock", "Omniston · The shape of a week",
+         "An ordinary weekday over the last eight weeks, UTC. Average against median.", [
+            ("chart", "Swaps and traders by weekday", "chart",
+             chart("column", "weekday",
+                   [("avg_swaps", "Average swaps", "column"),
+                    ("median_swaps", "Median swaps", "column"),
+                    ("avg_traders", "Average traders", "line", 1),
+                    ("median_traders", "Median traders", "line", 1)],
+                   "Swaps", y2_title="Traders", sort_x=False,
+                   number_format="0,0.0")),
+            ("volume", "Volume by weekday", "chart",
+             chart("column", "weekday",
+                   [("avg_volume_usd", "Average", "column"),
+                    ("median_volume_usd", "Median", "column")],
+                   "USD", "$0.0a", sort_x=False, number_format="$0,0")),
         ]),
         ("latency_funnel", "Omniston · Latency funnel",
          "Percentiles for each stage from quote request to settlement.", [
@@ -436,8 +510,11 @@ def layout() -> list[tuple]:
         ("viz", "headline::success", 2, 4),
         ("text", "## Growth", 6, 1),
         ("viz", "cross_chain_volume_daily::chart", 6, 7),
+        ("viz", "cross_chain_volume_daily::swaps", 6, 7),
         ("viz", "chain_volume_daily::chart", 6, 7),
         ("viz", "new_vs_returning_weekly::chart", 6, 7),
+        ("viz", "headline::pervol", 3, 4),
+        ("viz", "headline::perswaps", 3, 4),
         ("viz", "trader_cohorts::chart", 6, 7),
         ("text", FEE_NOTE, 6, 3),
         ("viz", "fee_headline::rate", 2, 4),
@@ -449,7 +526,11 @@ def layout() -> list[tuple]:
         ("viz", "chain_flows_sankey::sankey", 6, 9),
         ("viz", "corridor_share_daily::chart", 6, 7),
         ("viz", "net_flow_by_chain::chart", 6, 7),
-        ("viz", "hourly_clock::chart", 6, 6),
+        ("text", "## When people trade", 6, 1),
+        ("viz", "hourly_clock::chart", 3, 7),
+        ("viz", "hourly_clock::volume", 3, 7),
+        ("viz", "weekday_clock::chart", 3, 7),
+        ("viz", "weekday_clock::volume", 3, 7),
         ("text", "## How fast it settles", 6, 1),
         ("viz", "latency_funnel::chart", 3, 7),
         ("viz", "settlement_speed_daily::chart", 3, 7),

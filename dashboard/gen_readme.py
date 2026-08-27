@@ -1,4 +1,32 @@
-# Dashboard SQL
+"""Regenerate sql/README.md from the dashboard layout.
+
+The query table is derived, not hand-kept, so a chart that moves sections or a
+query that is added cannot leave the index quietly wrong. Run after build.py,
+which is what fills in the query IDs.
+
+Usage:  python dashboard/gen_readme.py
+"""
+
+import json, pathlib, re, sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import build
+
+# Sections come from the layout itself, so the table cannot drift from the
+# dashboard the way a hand-kept list does.
+section, seen = "Headline", {}
+for kind, key, *_ in build.layout():
+    if kind == "text":
+        heading = re.search(r"^##\s+(.+)$", key, re.M)
+        if heading:
+            section = heading.group(1).strip()
+    else:
+        seen.setdefault(key.split("::")[0], section)
+
+m = json.loads(pathlib.Path("dashboard/manifest.json").read_text())
+rows = "\n".join(f"| {m['queries'][k]} | `{k}.sql` | {sec} |"
+                 for k, sec in seen.items() if k in m["queries"])
+
+pathlib.Path("sql/README.md").write_text(f"""# Dashboard SQL
 
 Each file is the source of one saved Dune query. Dune is the deployment target,
 not the source of truth — edit here, then run `python dashboard/build.py`, which
@@ -9,29 +37,7 @@ Dashboard: https://dune.com/elsvv/omniston-cross-chain
 
 | Query ID | File | Dashboard section |
 | --- | --- | --- |
-| 8478191 | `headline.sql` | Headline |
-| 8477613 | `cross_chain_volume_daily.sql` | Growth |
-| 8480436 | `chain_volume_daily.sql` | Growth |
-| 8478332 | `new_vs_returning_weekly.sql` | Growth |
-| 8485054 | `trader_cohorts.sql` | Growth |
-| 8480487 | `fee_headline.sql` | What a swap costs |
-| 8480540 | `fee_split_daily.sql` | What a swap costs |
-| 8480557 | `integrator_league.sql` | What a swap costs |
-| 8478385 | `chain_flows_sankey.sql` | Where the money moves |
-| 8485049 | `corridor_share_daily.sql` | Where the money moves |
-| 8478339 | `net_flow_by_chain.sql` | Where the money moves |
-| 8480620 | `hourly_clock.sql` | When people trade |
-| 8516831 | `weekday_clock.sql` | When people trade |
-| 8478399 | `latency_funnel.sql` | How fast it settles |
-| 8480677 | `settlement_speed_daily.sql` | How fast it settles |
-| 8478465 | `resolver_league.sql` | Who settles the trades |
-| 8480706 | `assets_sold.sql` | What people trade |
-| 8480715 | `assets_bought.sql` | What people trade |
-| 8478514 | `trade_size_distribution.sql` | What people trade |
-| 8479423 | `polymarket_impact.sql` | Polymarket |
-| 8477790 | `polymarket_headline.sql` | Polymarket |
-| 8477772 | `polymarket_flows_daily.sql` | Polymarket |
-| 8511800 | `freshness.sql` | Notes |
+{rows}
 
 ## Scope: cross-chain only
 
@@ -49,7 +55,7 @@ is not about.
 Dune upload schemas are immutable, so adding those two dimensions meant deleting
 and recreating the affected tables:
 
-    curl -X DELETE -H "X-DUNE-API-KEY: $DUNE_API_KEY" \
+    curl -X DELETE -H "X-DUNE-API-KEY: $DUNE_API_KEY" \\
       https://api.dune.com/api/v1/table/$DUNE_NAMESPACE/omniston_daily_integrator
 
 then re-running `python -m omniston_dune`, which is a full refresh anyway. Space
@@ -149,3 +155,5 @@ against Dune's `tokens.erc20`. The token is therefore the identifier: pUSD as
 the output asset is a deposit, pUSD as the input asset is a withdrawal. No proxy
 wallet or bytecode heuristic is needed, and since pUSD is a dollar stablecoin
 the USD figures come straight from the raw units rather than a price feed.
+""")
+print("wrote sql/README.md with", rows.count("\n") + 1, "rows")

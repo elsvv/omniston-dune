@@ -33,5 +33,14 @@ jobs:
         env:
           DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
           DUNE_NAMESPACE: ${{ secrets.DUNE_NAMESPACE }}
-          DASHBOARD_QUERY_IDS: ${{ vars.DASHBOARD_QUERY_IDS }}
-        run: python -m omniston_dune --query-ids "$DASHBOARD_QUERY_IDS"
+        # The query IDs come from the manifest that dashboard/build.py writes,
+        # not from a repository variable. A variable has to be updated by hand
+        # every time a query is added, and forgetting does not fail anything:
+        # the new chart simply never re-executes and shows its build-day result
+        # for ever, sitting beside tiles that refresh nightly. Deriving the list
+        # from the manifest means adding a chart is one commit, not two steps
+        # where the second is invisible when skipped.
+        run: |
+          ids=$(jq -r '.queries | to_entries | map(.value) | join(",")' dashboard/manifest.json)
+          echo "refreshing $(echo "$ids" | tr ',' ' ' | wc -w) queries"
+          python -m omniston_dune --query-ids "$ids"

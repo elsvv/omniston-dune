@@ -33,6 +33,11 @@ o as (
   from dune.elsvv.omniston_orders
   where src_chain_id != dst_chain_id
 )
+-- Per-trader figures divide like with like: settled volume and settled swaps
+-- over the traders who settled them. They say whether growth is more people or
+-- the same people doing more, which the three totals above cannot.
 select cc.volume_usd, cc.swaps, o.traders, ton.net_ton_usd,
-       o.median_seconds, o.resolvers, o.success_pct
+       o.median_seconds, o.resolvers, o.success_pct,
+       cc.volume_usd / o.traders as volume_per_trader_usd,
+       cast(cc.swaps as double) / o.traders as swaps_per_trader
 from cc, ton, o

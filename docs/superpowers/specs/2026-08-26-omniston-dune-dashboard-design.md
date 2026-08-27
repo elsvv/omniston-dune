@@ -438,3 +438,40 @@ Two approximations were confirmed correct and are now documented rather than
 silent: the latency funnel's stage percentiles do not sum to its total and are
 not meant to, and the chain-flow Sankey drops corridors under $100 of lifetime
 volume.
+
+## 10. Amendment, 2026-08-27 — rhythm and running totals
+
+Prompted by `dune.com/whale_hunter/stonfi`, a mature dashboard for STON.fi's
+main DEX. Its option JSON is readable through the API — `dune dashboard get
+--owner whale_hunter --slug stonfi` for the grid and the visualization IDs,
+`dune visualization get <id>` for each chart's exact options — which turned a
+question about taste into a question about fact.
+
+**The second y-axis.** Every one of its growth charts pairs daily columns with
+a cumulative line drawn against `yAxis: 1`. Our `chart()` helper hardcoded
+`yAxis: 0` and emitted a single-axis array, so a running total was not
+expressible: on a shared scale the cumulative dwarfs any single day and presses
+the bars flat. The helper now takes an optional axis per series and a title for
+the right-hand axis, and daily volume and weekly traders each carry their
+running total.
+
+**Averaged, not summed.** The hour-of-day chart counted swaps per hour over all
+history — a number that grows for no reason but the dashboard getting older, and
+that answers "when did swaps happen" rather than "what does an ordinary hour
+look like". It now reports the average and the median hour over the last eight
+whole weeks, with a companion chart for volume, and a weekday twin beside it.
+Hours with no swaps are averaged in as zeros; dropped, an hour dead six days in
+seven would report its one busy day and rank among the busiest of the clock.
+
+Average sits beside median deliberately. Where they disagree the gap is the
+finding: an hour whose average runs well above its median is carried by a few
+busy days rather than being reliably busy.
+
+**Eight weeks, not all time.** Cross-chain barely traded before June. Averaging
+those weeks in describes a protocol that no longer exists, and the window is
+stated in each chart's title rather than left for the reader to assume.
+
+Two per-trader counters — volume and swaps — sit under the new-against-returning
+chart, where they say whether growth is more people or the same people trading
+more. They are placed there rather than in the hero row because they mean
+nothing without the split above them.

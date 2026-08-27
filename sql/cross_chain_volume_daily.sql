@@ -22,6 +22,11 @@ select
   day,
   volume_usd,
   swaps,
-  avg(volume_usd) over (order by day rows between 6 preceding and current row) as volume_7d_avg
+  avg(volume_usd) over (order by day rows between 6 preceding and current row) as volume_7d_avg,
+  -- Cumulative volume answers a question the daily bars cannot: is the total
+  -- still bending upward, or has growth gone flat while the daily noise hides
+  -- it? It belongs on its own axis -- see the note in build.py's chart().
+  sum(volume_usd) over (order by day) as cumulative_usd,
+  sum(swaps) over (order by day) as cumulative_swaps
 from daily
 order by day

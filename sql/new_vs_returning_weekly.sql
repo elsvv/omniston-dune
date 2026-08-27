@@ -20,12 +20,23 @@ activity as (
   -- only order failed has not traded, and counting it as a new trader who
   -- then never returned reports churn that never happened.
   where src_chain_id != dst_chain_id and status = 'TRADE_STATUS_FULLY_FILLED'
+),
+weekly as (
+  select
+    a.active_week as week,
+    count(distinct case when a.active_week = f.cohort_week then a.trader end) as new_traders,
+    count(distinct case when a.active_week > f.cohort_week then a.trader end) as returning_traders
+  from activity a
+  join first_seen f on f.trader = a.trader
+  group by 1
 )
+-- Cumulative traders is the running sum of new traders, not of the two columns
+-- added together: a returning trader was already counted in the week they
+-- first appeared, and summing both would count every repeat visit as a person.
 select
-  a.active_week as week,
-  count(distinct case when a.active_week = f.cohort_week then a.trader end) as new_traders,
-  count(distinct case when a.active_week > f.cohort_week then a.trader end) as returning_traders
-from activity a
-join first_seen f on f.trader = a.trader
-group by 1
-order by 1
+  week,
+  new_traders,
+  returning_traders,
+  sum(new_traders) over (order by week) as cumulative_traders
+from weekly
+order by week
